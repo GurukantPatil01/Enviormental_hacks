@@ -16,6 +16,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker, Polygon, PROVIDER_DEFAULT } from 'react-native-maps';
 import { api } from '../../lib/api';
 
+const NativeMapView = MapView as unknown as React.ComponentType<any>;
+const NativePolygon = Polygon as unknown as React.ComponentType<any>;
+const NativeMarker = Marker as unknown as React.ComponentType<any>;
+
 const PUNE_CENTER = { lat: 18.512, lng: 73.825 };
 
 function stateColor(cluster: ClusterSummary): string {
@@ -102,7 +106,7 @@ export default function MapScreen() {
       </View>
 
       <View style={styles.mapContainer}>
-        <MapView
+        <NativeMapView
           style={StyleSheet.absoluteFill}
           initialRegion={initialRegion}
           provider={PROVIDER_DEFAULT}
@@ -114,7 +118,7 @@ export default function MapScreen() {
             const coords = toPolygonCoords(cluster.boundaryGeoJson);
             if (coords.length === 0) return null;
             return (
-              <Polygon
+              <NativePolygon
                 key={cluster.id}
                 coordinates={coords}
                 fillColor={stateColor(cluster)}
@@ -127,7 +131,7 @@ export default function MapScreen() {
           })}
 
           {reports.map((r) => (
-            <Marker
+            <NativeMarker
               key={r.id}
               coordinate={{ latitude: r.lat, longitude: r.lng }}
               title={r.category.replace(/_/g, ' ')}
@@ -135,7 +139,7 @@ export default function MapScreen() {
               pinColor={r.status === 'RESOLVED' || r.status === 'CLOSED' ? 'green' : 'red'}
             />
           ))}
-        </MapView>
+        </NativeMapView>
 
         {/* Legend */}
         <View style={styles.legend}>

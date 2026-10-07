@@ -17,6 +17,7 @@ export function buildApp() {
   const app = Fastify({
     logger: process.env.NODE_ENV !== 'test',
     requestIdHeader: 'x-request-id',
+    bodyLimit: 15 * 1024 * 1024,
   });
 
   // CORS

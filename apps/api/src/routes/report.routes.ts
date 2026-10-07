@@ -2,6 +2,7 @@ import { addEvidenceSchema, createReportSchema } from '@ecopulse/validation';
 import type { FastifyInstance } from 'fastify';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { reportService } from '../services/report.service.js';
+import { storageService } from '../services/storage.service.js';
 
 export async function reportRoutes(app: FastifyInstance) {
   // 1. List reports
@@ -142,4 +143,58 @@ export async function reportRoutes(app: FastifyInstance) {
       });
     }
   });
+
+  // 7. Upload real-time photo evidence from device camera
+  app.post(
+    '/reports/upload',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        const body = request.body as {
+          data?: string;
+          filename?: string;
+          mimeType?: string;
+        };
+
+        if (!body || !body.data) {
+          return reply.status(400).send({
+            error: {
+              code: 'INVALID_PAYLOAD',
+              message: 'Missing image data (base64 or data URI required)',
+            },
+          });
+        }
+
+        const filename = body.filename || `evidence-${Date.now()}.jpg`;
+        const mimeType = body.mimeType || 'image/jpeg';
+
+        const result = await storageService.uploadEvidence(body.data, filename, mimeType);
+        return reply.send({ data: result });
+      } catch (err: any) {
+        return reply.status(500).send({
+          error: {
+            code: 'UPLOAD_FAILED',
+            message: err.message || 'Failed to process evidence upload',
+          },
+        });
+      }
+    }
+  );
+
+  // 8. Serve local evidence files
+  app.get<{ Params: { filename: string } }>('/uploads/:filename', async (request, reply) => {
+    try {
+      const buffer = await storageService.getEvidence(request.params.filename);
+      reply.header('Content-Type', 'image/jpeg');
+      return reply.send(buffer);
+    } catch {
+      return reply.status(404).send({
+        error: {
+          code: 'FILE_NOT_FOUND',
+          message: 'Evidence image not found',
+        },
+      });
+    }
+  });
 }
+

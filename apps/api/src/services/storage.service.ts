@@ -55,7 +55,13 @@ export class LocalEvidenceStorage implements IEvidenceStorage {
       const base64Data = options.data.split(',')[1] || options.data;
       buffer = Buffer.from(base64Data, 'base64');
     } else if (typeof options.data === 'string') {
-      buffer = Buffer.from(options.data, 'utf-8');
+      const trimmed = options.data.trim();
+      const isBase64 = trimmed.length > 50 && /^[A-Za-z0-9+/=\r\n]+$/.test(trimmed);
+      if (isBase64) {
+        buffer = Buffer.from(trimmed, 'base64');
+      } else {
+        buffer = Buffer.from(options.data, 'utf-8');
+      }
     } else {
       buffer = Buffer.from('');
     }
@@ -67,7 +73,7 @@ export class LocalEvidenceStorage implements IEvidenceStorage {
       // In-memory or test fallback
     }
 
-    const url = `https://storage.ecopulse.local/evidence/${key}`;
+    const url = `/uploads/${key}`;
 
     return {
       url,
@@ -200,3 +206,4 @@ export function createEvidenceStorage(): IEvidenceStorage {
 }
 
 export const evidenceStorage: IEvidenceStorage = createEvidenceStorage();
+export const storageService = new LocalEvidenceStorage();

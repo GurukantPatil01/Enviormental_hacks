@@ -14,17 +14,40 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "org.ecopulse.app"
+      "bundleIdentifier": "org.ecopulse.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "EcoPulse needs camera access to capture real-time environmental issue evidence.",
+        "NSLocationWhenInUseUsageDescription": "EcoPulse needs your GPS location to tag the exact coordinates where environmental evidence is captured.",
+        "NSPhotoLibraryUsageDescription": "EcoPulse needs photo library access to upload environmental evidence."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0E3B2E"
       },
-      "package": "org.ecopulse.app"
+      "package": "org.ecopulse.app",
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "EcoPulse needs your GPS location to tag coordinates where evidence is captured."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "EcoPulse needs access to your photos to upload evidence.",
+          "cameraPermission": "EcoPulse needs camera access to capture environmental evidence."
+        }
+      ]
     ]
   }
 }

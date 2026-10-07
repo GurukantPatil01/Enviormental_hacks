@@ -229,6 +229,12 @@ export class EcoPulseClient {
     listEvidence: (reportId: string): Promise<Evidence[]> => {
       return this.request<Evidence[]>(`/reports/${reportId}/evidence`);
     },
+    uploadImage: (data: string, filename?: string, mimeType?: string): Promise<{ storageKey: string; publicUrl: string; sizeBytes: number }> => {
+      return this.request<{ storageKey: string; publicUrl: string; sizeBytes: number }>('/reports/upload', {
+        method: 'POST',
+        body: JSON.stringify({ data, filename, mimeType }),
+      });
+    },
   };
 
   // Verification & Human Review Endpoints
