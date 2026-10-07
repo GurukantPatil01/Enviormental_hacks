@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "EcoPulse",
+    "slug": "ecopulse",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "ecopulse",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0E3B2E"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "org.ecopulse.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0E3B2E"
+      },
+      "package": "org.ecopulse.app"
+    },
+    "plugins": [
+      "expo-router"
+    ]
+  }
+}

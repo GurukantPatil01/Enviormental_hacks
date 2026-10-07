@@ -1,0 +1,80 @@
+import cors from '@fastify/cors';
+import fastifyJwt from '@fastify/jwt';
+import Fastify from 'fastify';
+import { registerEventHandlers } from './events/event-handlers.js';
+import { authRoutes } from './routes/auth.routes.js';
+import { communityRoutes } from './routes/community.routes.js';
+import { geoRoutes } from './routes/geo.routes.js';
+import { maintainerRoutes } from './routes/maintainer.routes.js';
+import { meRoutes } from './routes/me.routes.js';
+import { missionRoutes } from './routes/mission.routes.js';
+import { reportRoutes } from './routes/report.routes.js';
+import { reviewRoutes } from './routes/review.routes.js';
+import { taskRoutes } from './routes/task.routes.js';
+
+export function buildApp() {
+  const app = Fastify({
+    logger: process.env.NODE_ENV !== 'test',
+    requestIdHeader: 'x-request-id',
+  });
+
+  // CORS
+  app.register(cors, {
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  });
+
+  // JWT Authentication
+  const jwtSecret =
+    process.env.JWT_SECRET || 'super_secret_local_dev_jwt_key_replace_in_prod_at_least_32_chars_long';
+  app.register(fastifyJwt, {
+    secret: jwtSecret,
+  });
+
+  // Register domain event listeners
+  registerEventHandlers();
+
+  // Initialize asynchronous AI evidence processing worker
+  import('./services/evidence-processing.service.js').then(({ evidenceProcessingService }) => {
+    evidenceProcessingService.initialize();
+  });
+
+
+  // Health check
+  app.get('/health', async () => {
+    return {
+      status: 'ok',
+      service: 'EcoPulse API',
+      timestamp: new Date().toISOString(),
+    };
+  });
+
+  // Register API Routes
+  app.register(authRoutes);
+  app.register(geoRoutes);
+  app.register(communityRoutes);
+  app.register(missionRoutes);
+  app.register(meRoutes);
+  app.register(maintainerRoutes);
+  app.register(reportRoutes);
+  app.register(reviewRoutes);
+  app.register(taskRoutes);
+
+
+  // Uniform fallback error handler
+  app.setErrorHandler((error: any, request, reply) => {
+    request.log.error(error);
+    const statusCode = error.statusCode || 500;
+    const code = error.code || 'INTERNAL_SERVER_ERROR';
+    const message = error.message || 'An unexpected error occurred.';
+
+    reply.status(statusCode).send({
+      error: {
+        code,
+        message,
+      },
+    });
+  });
+
+  return app;
+}
