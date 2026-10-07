@@ -226,7 +226,9 @@ export type PointSource =
   | 'VERIFIED_REPORT'
   | 'COMMUNITY_MILESTONE'
   | 'INVALID_SUBMISSION'
-  | 'MANUAL_ADJUSTMENT';
+  | 'MANUAL_ADJUSTMENT'
+  | 'REWARD_REDEMPTION'
+  | 'REWARD_REVERSAL';
 
 export type PointType = 'CREDIT' | 'DEBIT';
 
@@ -581,7 +583,9 @@ export type DomainEventType =
   | 'POINTS_REVOKED'
   | 'STREAK_STARTED'
   | 'STREAK_EXTENDED'
-  | 'STREAK_BROKEN';
+  | 'STREAK_BROKEN'
+  | 'REWARD_CLAIMED'
+  | 'REWARD_CANCELLED';
 
 export interface DomainEvent<T = Record<string, unknown>> {
   id: string;
@@ -638,4 +642,68 @@ export interface MissionCompleteResponse {
   streakExtended: boolean;
   ledgerEntry: PointLedgerEntry;
 }
+
+// ==========================================
+// Rewards & Government Ticket Discount Coupons
+// ==========================================
+export type RewardCategory =
+  | 'TRANSIT_PASS'
+  | 'METRO_DISCOUNT'
+  | 'MUNICIPAL_TICKET'
+  | 'PARKS_AND_RECREATION'
+  | 'GOVERNMENT_UTILITY'
+  | 'OTHER';
+
+export type RewardStatus = 'ACTIVE' | 'PAUSED' | 'OUT_OF_STOCK' | 'EXPIRED';
+
+export interface RewardPartner {
+  id: string;
+  name: string;
+  category: string;
+  contactEmail?: string | null;
+  logoUrl?: string | null;
+  status: 'ACTIVE' | 'INACTIVE';
+  createdAt: string;
+}
+
+export interface Reward {
+  id: string;
+  partnerId: string;
+  partnerName?: string;
+  partnerLogoUrl?: string | null;
+  title: string;
+  description: string;
+  category: RewardCategory;
+  costPoints: number;
+  discountPercent?: number | null;
+  discountAmountInr?: number | null;
+  inventoryTotal: number;
+  inventoryRemaining: number;
+  redemptionInstructions: string;
+  terms?: string | null;
+  status: RewardStatus;
+  validUntil?: string | null;
+  createdAt: string;
+}
+
+export type ClaimStatus = 'CLAIMED' | 'USED' | 'EXPIRED' | 'CANCELLED';
+
+export interface RewardClaim {
+  id: string;
+  rewardId: string;
+  userId: string;
+  rewardTitle?: string;
+  rewardCategory?: RewardCategory;
+  partnerName?: string;
+  clientEventId: string;
+  costPoints: number;
+  couponCode: string;
+  status: ClaimStatus;
+  claimedAt: string;
+  usedAt?: string | null;
+  expiresAt: string;
+  redemptionInstructions?: string;
+  metadata?: Record<string, unknown> | null;
+}
+
 

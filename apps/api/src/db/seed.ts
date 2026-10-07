@@ -467,6 +467,7 @@ export async function seed() {
 
   console.log('📋 Seeded reports, evidence, AI reviews, agent runs & tasks.');
   await seedGeography(community.id, maintainerUser.id, demoResidents.length);
+  await seedRewards();
 
   console.log('✅ Seeding completed successfully (DEVELOPMENT DATA ONLY).');
 }
@@ -656,6 +657,192 @@ async function seedGeography(communityId: string, maintainerUserId: string, resi
   );
 
   console.log(`🗺  Geography seeded: 1 city, ${wardDefs.length} wards, ${clusterDefs.length} clusters, ${memberships.length} memberships.`);
+}
+
+async function seedRewards() {
+  console.log('🎟  Seeding Government Ticket Discount Coupons & Rewards...');
+
+  // 1. PMPML Transit Partner
+  const pmpmlRes = await pool.query(`
+    INSERT INTO reward_partners (name, category, contact_email, logo_url, status)
+    VALUES ('PMPML Public Transit', 'GOVERNMENT_TRANSIT', 'support@pmpml.org', 'https://images.unsplash.com/photo-1570125909232-eb263c188f7e?w=120', 'ACTIVE')
+    ON CONFLICT DO NOTHING
+    RETURNING id;
+  `);
+  let pmpmlId = pmpmlRes.rows[0]?.id;
+  if (!pmpmlId) {
+    const existing = await pool.query(`SELECT id FROM reward_partners WHERE name = 'PMPML Public Transit'`);
+    pmpmlId = existing.rows[0]?.id;
+  }
+
+  // 2. Pune Metro Rail (Maha Metro)
+  const metroRes = await pool.query(`
+    INSERT INTO reward_partners (name, category, contact_email, logo_url, status)
+    VALUES ('Pune Metro Rail Corporation', 'GOVERNMENT_TRANSIT', 'info@punemetrorail.org', 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=120', 'ACTIVE')
+    ON CONFLICT DO NOTHING
+    RETURNING id;
+  `);
+  let metroId = metroRes.rows[0]?.id;
+  if (!metroId) {
+    const existing = await pool.query(`SELECT id FROM reward_partners WHERE name = 'Pune Metro Rail Corporation'`);
+    metroId = existing.rows[0]?.id;
+  }
+
+  // 3. PMC (Pune Municipal Corporation Parks & Heritage)
+  const pmcRes = await pool.query(`
+    INSERT INTO reward_partners (name, category, contact_email, logo_url, status)
+    VALUES ('Pune Municipal Corporation (PMC)', 'MUNICIPAL_SERVICES', 'gardens@punecorporation.org', 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=120', 'ACTIVE')
+    ON CONFLICT DO NOTHING
+    RETURNING id;
+  `);
+  let pmcId = pmcRes.rows[0]?.id;
+  if (!pmcId) {
+    const existing = await pool.query(`SELECT id FROM reward_partners WHERE name = 'Pune Municipal Corporation (PMC)'`);
+    pmcId = existing.rows[0]?.id;
+  }
+
+  // Rewards list
+  const rewardItems = [
+    {
+      partnerId: pmpmlId,
+      title: 'PMPML Electric Bus 100% Free Day Pass',
+      description: 'Unlimited 1-day free travel across all Pune & PCMC electric and standard city buses.',
+      category: 'TRANSIT_PASS',
+      costPoints: 60,
+      discountPercent: 100,
+      discountAmountInr: 70,
+      inventoryTotal: 500,
+      inventoryRemaining: 482,
+      redemptionInstructions: 'Show your coupon voucher code to the PMPML bus conductor or ticket inspector upon boarding.',
+      terms: 'Valid on all operational PMPML routes for 1 calendar day from redemption.',
+      validUntil: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+    },
+    {
+      partnerId: metroId,
+      title: 'Pune Metro 50% Off Single Journey Ticket',
+      description: '50% discount voucher valid on Line 1 (PCMC - Swargate) and Line 2 (Vanaz - Ramwadi).',
+      category: 'METRO_DISCOUNT',
+      costPoints: 40,
+      discountPercent: 50,
+      discountAmountInr: 25,
+      inventoryTotal: 1000,
+      inventoryRemaining: 954,
+      redemptionInstructions: 'Enter coupon code into the official Pune Metro app or display at station ticketing counter.',
+      terms: 'One ticket per voucher code. Valid on both Line 1 and Line 2 stations.',
+      validUntil: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
+    },
+    {
+      partnerId: pmpmlId,
+      title: 'PMPML Monthly Bus Pass ₹150 Subsidy',
+      description: 'Get an instant ₹150 concession on your standard monthly commuter bus pass.',
+      category: 'TRANSIT_PASS',
+      costPoints: 180,
+      discountPercent: null,
+      discountAmountInr: 150,
+      inventoryTotal: 250,
+      inventoryRemaining: 238,
+      redemptionInstructions: 'Present voucher at any designated PMPML pass issuance counter (Swargate, Pune Station, Deccan, Katraj).',
+      terms: 'Applicable towards monthly standard passes. Non-transferable.',
+      validUntil: new Date(Date.now() + 120 * 24 * 60 * 60 * 1000),
+    },
+    {
+      partnerId: pmcId,
+      title: 'Rajiv Gandhi Zoological Park (Katraj Zoo) Free Entry Pass',
+      description: 'Complimentary adult entry ticket to Rajiv Gandhi Zoo & Animal Rescue Center in Katraj.',
+      category: 'PARKS_AND_RECREATION',
+      costPoints: 50,
+      discountPercent: 100,
+      discountAmountInr: 40,
+      inventoryTotal: 300,
+      inventoryRemaining: 284,
+      redemptionInstructions: 'Show the digital coupon code at the PMC Zoo main entry gate for direct turnstile admission.',
+      terms: 'Valid on all park operating days except Wednesdays (weekly maintenance).',
+      validUntil: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+    },
+    {
+      partnerId: pmcId,
+      title: 'Shaniwar Wada & Heritage Walk Free Entry Ticket',
+      description: 'Free entry pass to historical Shaniwar Wada monument and PMC guided heritage corridor.',
+      category: 'MUNICIPAL_TICKET',
+      costPoints: 30,
+      discountPercent: 100,
+      discountAmountInr: 25,
+      inventoryTotal: 400,
+      inventoryRemaining: 388,
+      redemptionInstructions: 'Display coupon code at the ASI/PMC ticketing window at Delhi Gate for free entry token.',
+      terms: 'Valid for one adult entry during public opening hours (9:30 AM - 5:30 PM).',
+      validUntil: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+    },
+    {
+      partnerId: metroId,
+      title: 'Pune Metro One Card ₹100 Top-up Cashback',
+      description: 'Recharge voucher worth ₹100 added directly to your smart transit travel card.',
+      category: 'METRO_DISCOUNT',
+      costPoints: 120,
+      discountPercent: null,
+      discountAmountInr: 100,
+      inventoryTotal: 200,
+      inventoryRemaining: 191,
+      redemptionInstructions: 'Visit customer care at any Metro station with your Metro One card and voucher code.',
+      terms: 'Requires active Pune Metro One Smart Card.',
+      validUntil: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
+    },
+  ];
+
+  for (const item of rewardItems) {
+    if (!item.partnerId) continue;
+    await pool.query(
+      `
+      INSERT INTO rewards (
+        partner_id, title, description, category, cost_points, 
+        discount_percent, discount_amount_inr, inventory_total, 
+        inventory_remaining, redemption_instructions, terms, 
+        status, valid_until
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'ACTIVE', $12)
+      ON CONFLICT DO NOTHING;
+    `,
+      [
+        item.partnerId,
+        item.title,
+        item.description,
+        item.category,
+        item.costPoints,
+        item.discountPercent,
+        item.discountAmountInr,
+        item.inventoryTotal,
+        item.inventoryRemaining,
+        item.redemptionInstructions,
+        item.terms,
+        item.validUntil,
+      ]
+    );
+  }
+
+  // Also seed a sample claimed ticket for Priya Sharma (demo user) so UI immediately shows active tickets
+  const priyaRes = await pool.query(`SELECT id FROM users WHERE email = 'priya.sharma@example.com'`);
+  if (priyaRes.rows.length > 0) {
+    const priyaId = priyaRes.rows[0].id;
+    const busReward = await pool.query(
+      `SELECT id, cost_points FROM rewards WHERE category = 'TRANSIT_PASS' LIMIT 1`
+    );
+    if (busReward.rows.length > 0) {
+      await pool.query(
+        `
+        INSERT INTO reward_claims (
+          reward_id, user_id, client_event_id, cost_points, 
+          coupon_code, status, expires_at, metadata
+        ) VALUES (
+          $1, $2, 'seed_claim_priya_pmpml_01', $3,
+          'PMPML-BUS-7D9A2', 'CLAIMED', NOW() + INTERVAL '25 days',
+          '{"rewardTitle":"PMPML Electric Bus 100% Free Day Pass","discountPercent":100}'
+        ) ON CONFLICT DO NOTHING;
+      `,
+        [busReward.rows[0].id, priyaId, busReward.rows[0].cost_points]
+      );
+    }
+  }
+
+  console.log(`🎟  Rewards seeded: ${rewardItems.length} government ticket discount coupons.`);
 }
 
 if (process.argv[1]?.endsWith('seed.ts')) {

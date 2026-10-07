@@ -452,3 +452,63 @@ export const agentActions = pgTable('agent_actions', {
   reviewedBy: uuid('reviewed_by').references(() => users.id),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+// ==========================================
+// 10. Rewards & Government Ticket Coupons
+// ==========================================
+export const rewardPartners = pgTable('reward_partners', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: varchar('name', { length: 255 }).notNull(),
+  category: varchar('category', { length: 100 }).notNull(),
+  contactEmail: varchar('contact_email', { length: 255 }),
+  logoUrl: text('logo_url'),
+  status: varchar('status', { length: 50 }).notNull().default('ACTIVE'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const rewards = pgTable('rewards', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  partnerId: uuid('partner_id')
+    .notNull()
+    .references(() => rewardPartners.id, { onDelete: 'cascade' }),
+  title: varchar('title', { length: 255 }).notNull(),
+  description: text('description').notNull(),
+  category: varchar('category', { length: 50 }).notNull(),
+  costPoints: integer('cost_points').notNull(),
+  discountPercent: integer('discount_percent'),
+  discountAmountInr: integer('discount_amount_inr'),
+  inventoryTotal: integer('inventory_total').notNull(),
+  inventoryRemaining: integer('inventory_remaining').notNull(),
+  redemptionInstructions: text('redemption_instructions').notNull(),
+  terms: text('terms'),
+  status: varchar('status', { length: 50 }).notNull().default('ACTIVE'),
+  validUntil: timestamp('valid_until', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const rewardClaims = pgTable(
+  'reward_claims',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    rewardId: uuid('reward_id')
+      .notNull()
+      .references(() => rewards.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    clientEventId: varchar('client_event_id', { length: 255 }).notNull().unique(),
+    costPoints: integer('cost_points').notNull(),
+    couponCode: varchar('100').notNull(),
+    status: varchar('status', { length: 50 }).notNull().default('CLAIMED'),
+    claimedAt: timestamp('claimed_at', { withTimezone: true }).defaultNow().notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    metadata: jsonb('metadata'),
+  },
+  (table) => [
+    uniqueIndex('uq_reward_claim_client_event').on(table.clientEventId),
+  ]
+);
+

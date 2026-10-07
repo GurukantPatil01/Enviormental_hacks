@@ -432,6 +432,62 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_missions_cluster ON missions(cluster_id);
     `,
   },
+  {
+    name: '0002_rewards_and_government_coupons',
+    sql: `
+      -- Reward Partners (Transit authorities, municipal corporations, public utilities)
+      CREATE TABLE IF NOT EXISTS reward_partners (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        name VARCHAR(255) NOT NULL,
+        category VARCHAR(100) NOT NULL,
+        contact_email VARCHAR(255),
+        logo_url TEXT,
+        status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+      );
+
+      -- Rewards & Government Discount Coupons
+      CREATE TABLE IF NOT EXISTS rewards (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        partner_id UUID NOT NULL REFERENCES reward_partners(id) ON DELETE CASCADE,
+        title VARCHAR(255) NOT NULL,
+        description TEXT NOT NULL,
+        category VARCHAR(50) NOT NULL,
+        cost_points INTEGER NOT NULL,
+        discount_percent INTEGER,
+        discount_amount_inr INTEGER,
+        inventory_total INTEGER NOT NULL,
+        inventory_remaining INTEGER NOT NULL,
+        redemption_instructions TEXT NOT NULL,
+        terms TEXT,
+        status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
+        valid_until TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+      );
+
+      -- Reward Claims & Issued Coupons
+      CREATE TABLE IF NOT EXISTS reward_claims (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        reward_id UUID NOT NULL REFERENCES rewards(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        client_event_id VARCHAR(255) NOT NULL UNIQUE,
+        cost_points INTEGER NOT NULL,
+        coupon_code VARCHAR(100) NOT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'CLAIMED',
+        claimed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+        used_at TIMESTAMP WITH TIME ZONE,
+        expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+        metadata JSONB
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_rewards_partner ON rewards(partner_id);
+      CREATE INDEX IF NOT EXISTS idx_rewards_status_category ON rewards(status, category);
+      CREATE INDEX IF NOT EXISTS idx_reward_claims_user ON reward_claims(user_id);
+      CREATE INDEX IF NOT EXISTS idx_reward_claims_code ON reward_claims(coupon_code);
+    `,
+  },
 ];
 
 export async function runMigrations() {

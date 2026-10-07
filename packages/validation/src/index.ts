@@ -138,3 +138,19 @@ export const verifyTaskSchema = z.object({
 
 export type VerifyTaskInput = z.infer<typeof verifyTaskSchema>;
 
+// ==========================================
+// Rewards & Coupon Validation
+// ==========================================
+export const claimRewardSchema = z.object({
+  clientEventId: z.string().min(8, 'Client event ID must be at least 8 characters for idempotency'),
+});
+
+export type ClaimRewardInput = z.infer<typeof claimRewardSchema>;
+
+export const getRewardsQuerySchema = z.object({
+  category: z.string().optional(),
+});
+
+export type GetRewardsQuery = z.infer<typeof getRewardsQuerySchema>;
+
+

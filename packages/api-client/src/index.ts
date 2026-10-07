@@ -21,6 +21,8 @@ import type {
   PointLedgerEntry,
   Report,
   ResolvedLocation,
+  Reward,
+  RewardClaim,
   Streak,
   Task,
   User,
@@ -372,6 +374,26 @@ export class EcoPulseClient {
     },
     getCluster: (): Promise<ClusterSummary | null> => {
       return this.request<ClusterSummary | null>('/me/cluster');
+    },
+  };
+
+  // Rewards & Government Ticket Discount Coupons
+  public readonly rewards = {
+    getAll: (category?: string): Promise<Reward[]> => {
+      const query = category ? `?category=${encodeURIComponent(category)}` : '';
+      return this.request<Reward[]>(`/rewards${query}`);
+    },
+    getById: (id: string): Promise<Reward> => {
+      return this.request<Reward>(`/rewards/${id}`);
+    },
+    claim: (id: string, clientEventId: string): Promise<{ claim: RewardClaim; newBalance: number }> => {
+      return this.request<{ claim: RewardClaim; newBalance: number }>(`/rewards/${id}/claim`, {
+        method: 'POST',
+        body: JSON.stringify({ clientEventId }),
+      });
+    },
+    getMyClaims: (): Promise<RewardClaim[]> => {
+      return this.request<RewardClaim[]>('/rewards/my-claims');
     },
   };
 }

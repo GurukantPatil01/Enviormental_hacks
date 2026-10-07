@@ -10,6 +10,7 @@ import { meRoutes } from './routes/me.routes.js';
 import { missionRoutes } from './routes/mission.routes.js';
 import { reportRoutes } from './routes/report.routes.js';
 import { reviewRoutes } from './routes/review.routes.js';
+import { rewardRoutes } from './routes/reward.routes.js';
 import { taskRoutes } from './routes/task.routes.js';
 
 export function buildApp() {
@@ -58,6 +59,7 @@ export function buildApp() {
   app.register(maintainerRoutes);
   app.register(reportRoutes);
   app.register(reviewRoutes);
+  app.register(rewardRoutes);
   app.register(taskRoutes);
 
 
