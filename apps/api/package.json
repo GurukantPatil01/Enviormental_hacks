@@ -12,7 +12,8 @@
     "lint": "echo 'api lint passed'",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
-    "db:seed": "tsx src/db/seed.ts"
+    "db:seed": "tsx src/db/seed.ts",
+    "db:check": "tsx src/db/check-connection.ts"
   },
   "dependencies": {
     "@ecopulse/config": "workspace:*",

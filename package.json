@@ -10,7 +10,8 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "db:migrate": "pnpm --filter @ecopulse/api db:migrate",
-    "db:seed": "pnpm --filter @ecopulse/api db:seed"
+    "db:seed": "pnpm --filter @ecopulse/api db:seed",
+    "db:check": "pnpm --filter @ecopulse/api db:check"
   },
   "devDependencies": {
     "turbo": "^2.4.4",
