@@ -558,7 +558,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   webLoading: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: '#F9FAFB',
     alignItems: 'center',
     justifyContent: 'center',
