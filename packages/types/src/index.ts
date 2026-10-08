@@ -475,21 +475,34 @@ export interface HumanReview {
   createdAt: string;
 }
 
-export type AgentRunStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+export type AgentRunStatus =
+  | 'QUEUED'
+  | 'RUNNING'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'CANCELLED'
+  | 'in_progress'
+  | 'completed'
+  | 'failed';
 
 export interface AgentRun {
   id: string;
   agentId?: string | null;
-  agentType: string;
-  entityType: string;
-  entityId: string;
+  agentType?: string;
+  entityType?: string;
+  entityId?: string | null;
+  conversationId?: string | null;
+  userId?: string | null;
   status: AgentRunStatus;
-  provider: string;
-  model: string;
+  provider?: string;
+  model?: string;
   startedAt: string;
   completedAt?: string | null;
   inputReference?: string | null;
   outputReference?: Record<string, unknown> | null;
+  roundCount?: number;
+  totalDuration?: number;
+  finalResponse?: string | null;
   error?: string | null;
   metadata?: Record<string, unknown> | null;
 }
@@ -563,14 +576,23 @@ export type DomainEventType =
   | 'REPORT_VERIFIED'
   | 'REPORT_REJECTED'
   | 'EVIDENCE_ADDED'
+  | 'EVIDENCE_UPLOADED'
   | 'EVIDENCE_VERIFIED'
   | 'EVIDENCE_PROCESSING_REQUESTED'
   | 'EVIDENCE_PROCESSING_STARTED'
   | 'EVIDENCE_ANALYZED'
+  | 'AI_ANALYSIS_REQUESTED'
+  | 'AI_ANALYSIS_COMPLETED'
   | 'AI_RECOMMENDATION_CREATED'
   | 'AI_RECOMMENDATION_FAILED'
+  | 'EMBEDDING_REQUESTED'
+  | 'EMBEDDING_CREATED'
+  | 'HOTSPOT_ANALYSIS_REQUESTED'
+  | 'HOTSPOT_UPDATED'
+  | 'INTERVENTION_CREATED'
+  | 'INTERVENTION_COMPLETED'
+  | 'OUTCOME_MEASURED'
   | 'REVIEW_CREATED'
-
   | 'REVIEW_APPROVED'
   | 'REVIEW_REJECTED'
   | 'TASK_CREATED'
@@ -594,6 +616,20 @@ export interface DomainEvent<T = Record<string, unknown>> {
   actorId?: string | null;
   timestamp: string;
   payload: T;
+}
+
+export interface EcoPulseEvent<T = Record<string, unknown>> {
+  eventId: string;
+  eventType: DomainEventType;
+  version: number;
+  source: string;
+  timestamp: string;
+  correlationId: string;
+  payload: T;
+  actorId?: string | null;
+  id?: string;
+  type?: DomainEventType;
+  aggregateId?: string;
 }
 
 // ==========================================
@@ -704,6 +740,175 @@ export interface RewardClaim {
   expiresAt: string;
   redemptionInstructions?: string;
   metadata?: Record<string, unknown> | null;
+}
+
+// ==========================================
+// 11. Environmental Intelligence Domain Layer
+// ==========================================
+
+export interface EnvironmentalEvent {
+  id: string;
+  reportId?: string | null;
+  userId?: string | null;
+  eventType?: string;
+  timestamp: string;
+  latitude: number;
+  longitude: number;
+  geometry?: Record<string, unknown> | null;
+  description: string;
+  status: string;
+  source: string; // 'CITIZEN_REPORT', 'IOT_SENSOR', 'DRONE_SCAN', 'MANUAL_AUDIT'
+  severity?: string;
+  observation?: {
+    wasteType: string;
+    severity?: string;
+    confidence?: number;
+    estimatedVolume?: string | null;
+    environmentalRisk?: string | null;
+    publicSafetyRisk?: string | null;
+    recommendedAction?: string | null;
+    illegalDumpingLikelihood?: number | null;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AIObservation {
+  id: string;
+  eventId: string;
+  modelProvider: string; // 'mock', 'bedrock', 'local'
+  modelName: string;
+  wasteType: string;
+  secondaryWasteTypes?: string[];
+  severity: ObservationSeverity; // 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
+  confidence: number;
+  estimatedVolume?: string | null;
+  environmentalRisk?: string | null;
+  publicSafetyRisk?: string | null;
+  illegalDumpingLikelihood?: number | null;
+  recommendedAction?: string | null;
+  rawMetadata?: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface EnvironmentalEmbedding {
+  id: string;
+  eventId: string;
+  provider: string; // 'mock', 'bedrock-titan', 'local'
+  model: string;
+  modality: 'TEXT' | 'IMAGE' | 'MULTIMODAL';
+  dimensions: number;
+  vector: number[];
+  createdAt: string;
+}
+
+export interface Hotspot {
+  id: string;
+  geometry?: Record<string, unknown> | null;
+  centerLatitude: number;
+  centerLongitude: number;
+  radius: number; // in meters
+  reportCount: number;
+  averageSeverity: number;
+  dominantWasteType: string;
+  trend: 'INCREASING' | 'STABLE' | 'DECREASING';
+  score: number;
+  status: 'ACTIVE' | 'INVESTIGATING' | 'MITIGATED' | 'RESOLVED';
+  firstDetectedAt: string;
+  lastDetectedAt: string;
+}
+
+export type InterventionType =
+  | 'CLEANUP_CREW'
+  | 'ADD_BIN'
+  | 'COMMUNITY_DRIVE'
+  | 'SURVEILLANCE_CAMERA'
+  | 'ENFORCEMENT_FINE'
+  | 'DRAIN_DESILTING';
+
+export type InterventionStatus =
+  | 'PROPOSED'
+  | 'APPROVED'
+  | 'IN_PROGRESS'
+  | 'COMPLETED'
+  | 'CANCELLED'
+  | 'draft'
+  | 'approved'
+  | 'in_progress'
+  | 'completed'
+  | 'cancelled';
+
+export type InterventionPriority =
+  | 'LOW'
+  | 'MEDIUM'
+  | 'HIGH'
+  | 'CRITICAL'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'critical';
+
+export interface Intervention {
+  id: string;
+  hotspotId?: string | null;
+  type: string;
+  priority: InterventionPriority;
+  status: InterventionStatus;
+  assignedTeam?: string | null;
+  notes?: string | null;
+  createdAt: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+}
+
+export interface InterventionOutcome {
+  id: string;
+  interventionId: string;
+  beforeReportRate: number;
+  afterReportRate: number;
+  beforeSeverity: number;
+  afterSeverity: number;
+  beforeHotspotSize: number;
+  afterHotspotSize: number;
+  successScore: number;
+  measuredAt: string;
+}
+
+export interface AgentToolCall {
+  id: string;
+  agentRunId: string;
+  round: number;
+  toolName: string;
+  input: Record<string, unknown>;
+  output?: Record<string, unknown> | null;
+  status: 'SUCCESS' | 'ERROR' | 'TIMEOUT';
+  duration: number;
+  error?: string | null;
+  createdAt: string;
+}
+
+export interface ChartSpec {
+  type: 'line' | 'bar' | 'pie' | 'scatter' | 'heatmap';
+  title: string;
+  xAxis: string;
+  yAxis: string;
+  series: Array<{
+    name: string;
+    data: Array<{ x: string | number; y: number }>;
+  }>;
+}
+
+export interface MapLayer {
+  id: string;
+  type: 'markers' | 'heatmap' | 'polygons' | 'hotspot_circles';
+  data: any[];
+  style?: Record<string, unknown>;
+}
+
+export interface MapSpec {
+  center: { lat: number; lng: number };
+  zoom: number;
+  layers: MapLayer[];
 }
 
 

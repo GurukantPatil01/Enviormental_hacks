@@ -1,4 +1,7 @@
 import type { HumanReview, ReviewDecision, ReviewEntityType } from '@ecopulse/types';
+import { eq } from 'drizzle-orm';
+import { db } from '../db/index.js';
+import { environmentalEvents } from '../db/schema.js';
 import { eventBus } from '../events/event-bus.js';
 import { reportRepository } from '../repositories/report.repository.js';
 import { reviewRepository } from '../repositories/review.repository.js';
@@ -103,6 +106,13 @@ export class ReviewService {
     if (decision === 'APPROVED') {
       // Transition report to VERIFIED
       await reportRepository.updateStatus(reportId, 'VERIFIED');
+      try {
+        await db.update(environmentalEvents)
+          .set({ status: 'VERIFIED' })
+          .where(eq(environmentalEvents.reportId, reportId));
+      } catch (e) {
+        console.error('[ReviewService] Failed to sync VERIFIED to environmental_events:', e);
+      }
 
       // Update associated evidence items to VERIFIED
       if (report.evidence) {
@@ -143,9 +153,23 @@ export class ReviewService {
     } else if (decision === 'REQUEST_MORE_EVIDENCE') {
       // Mark report as UNDER_REVIEW requesting further documentation
       await reportRepository.updateStatus(reportId, 'UNDER_REVIEW');
+      try {
+        await db.update(environmentalEvents)
+          .set({ status: 'UNDER_REVIEW' })
+          .where(eq(environmentalEvents.reportId, reportId));
+      } catch (e) {
+        console.error('[ReviewService] Failed to sync UNDER_REVIEW to environmental_events:', e);
+      }
     } else {
       // Transition report to REJECTED
       await reportRepository.updateStatus(reportId, 'REJECTED');
+      try {
+        await db.update(environmentalEvents)
+          .set({ status: 'REJECTED' })
+          .where(eq(environmentalEvents.reportId, reportId));
+      } catch (e) {
+        console.error('[ReviewService] Failed to sync REJECTED to environmental_events:', e);
+      }
 
       if (report.evidence) {
         for (const ev of report.evidence) {

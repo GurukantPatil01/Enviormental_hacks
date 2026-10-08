@@ -33,6 +33,10 @@ describe('EcoPulse Government Ticket Discount Coupons & Rewards Tests', () => {
     residentToken = loginData.data.token;
     residentUserId = loginData.data.user.id;
 
+    // Reset previous test claims & debits for isolation
+    await pool.query('DELETE FROM reward_claims WHERE user_id = $1', [residentUserId]);
+    await pool.query("DELETE FROM point_ledger WHERE user_id = $1 AND source = 'REWARD_REDEMPTION'", [residentUserId]);
+
     // 2. Register a brand new user with 0 points
     const poorEmail = `poor.citizen.${Date.now()}@example.com`;
     const regRes = await app.inject({

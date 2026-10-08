@@ -153,4 +153,52 @@ export const getRewardsQuerySchema = z.object({
 
 export type GetRewardsQuery = z.infer<typeof getRewardsQuerySchema>;
 
+// ==========================================
+// Event & Environmental Intelligence Validation
+// ==========================================
+export const ecoPulseEventSchema = z.object({
+  eventId: z.string().uuid(),
+  eventType: z.string(),
+  version: z.number().int().positive().default(1),
+  source: z.string().default('ecopulse.api'),
+  timestamp: z.string(),
+  correlationId: z.string(),
+  payload: z.record(z.unknown()),
+  actorId: z.string().nullable().optional(),
+});
+
+export type EcoPulseEventInput = z.infer<typeof ecoPulseEventSchema>;
+
+export const environmentalObservationSchema = z.object({
+  wasteType: z.string().min(1),
+  secondaryWasteTypes: z.array(z.string()).optional(),
+  severity: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']),
+  confidence: z.number().min(0).max(1),
+  estimatedVolume: z.string().optional(),
+  environmentalRisk: z.string().optional(),
+  publicSafetyRisk: z.string().optional(),
+  illegalDumpingLikelihood: z.number().min(0).max(1).optional(),
+  description: z.string().optional(),
+  recommendedAction: z.string().optional(),
+});
+
+export type EnvironmentalObservationInput = z.infer<typeof environmentalObservationSchema>;
+
+export const createInterventionSchema = z.object({
+  hotspotId: z.string().uuid('Invalid hotspot UUID'),
+  type: z.enum([
+    'CLEANUP_CREW',
+    'ADD_BIN',
+    'COMMUNITY_DRIVE',
+    'SURVEILLANCE_CAMERA',
+    'ENFORCEMENT_FINE',
+    'DRAIN_DESILTING',
+  ]),
+  priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).default('MEDIUM'),
+  assignedTeam: z.string().max(255).optional(),
+  notes: z.string().max(2000).optional(),
+});
+
+export type CreateInterventionInput = z.infer<typeof createInterventionSchema>;
+
 

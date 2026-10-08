@@ -1,41 +1,59 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
+import { getSignedUrl as awsGetSignedUrl } from '@aws-sdk/s3-request-presigner';
 
-export interface UploadEvidenceOptions {
-  filename: string;
-  mimeType: string;
-  data: Buffer | string; // Buffer or Base64 or Data URI
-  metadata?: Record<string, unknown>;
-}
-
-export interface UploadResult {
-  url: string;
+export interface PutObjectOptions {
   key: string;
-  bytes: number;
+  data: Buffer | string;
+  contentType?: string;
+  metadata?: Record<string, string>;
+  maxSizeBytes?: number;
 }
 
-export interface IEvidenceStorage {
-  upload(options: UploadEvidenceOptions): Promise<UploadResult>;
-  getUrl(key: string): Promise<string>;
-  delete(key: string): Promise<void>;
+export interface IObjectStorage {
+  putObject(options: PutObjectOptions): Promise<{ key: string; bytes: number; url?: string }>;
+  getObject(key: string): Promise<Buffer>;
+  deleteObject(key: string): Promise<void>;
+  getSignedUrl(key: string, operation?: 'getObject' | 'putObject', expiresInSeconds?: number): Promise<string>;
+  exists(key: string): Promise<boolean>;
   getProviderName(): string;
 }
 
 /**
- * Local development evidence storage.
- * Stores files in the local filesystem and generates accessible URLs.
+ * Validates object storage key against directory traversal and illegal characters.
  */
-export class LocalEvidenceStorage implements IEvidenceStorage {
-  private uploadsDir: string;
+export function validateStorageKey(key: string): string {
+  if (key.includes('..') || key.startsWith('/') || key.startsWith('\\')) {
+    throw new Error(`Invalid storage key: "${key}"`);
+  }
+  const sanitized = path.normalize(key);
+  if (!sanitized || sanitized === '.' || sanitized.includes('..')) {
+    throw new Error(`Invalid storage key: "${key}"`);
+  }
+  return sanitized;
+}
 
-  constructor(uploadsDir?: string) {
-    this.uploadsDir = uploadsDir || path.resolve(process.cwd(), 'uploads');
-    if (!fs.existsSync(this.uploadsDir)) {
+/**
+ * Local filesystem object storage for development and unit tests.
+ */
+export class LocalObjectStorage implements IObjectStorage {
+  private baseDir: string;
+
+  constructor(baseDir?: string) {
+    this.baseDir = baseDir || path.resolve(process.cwd(), 'uploads');
+    if (!fs.existsSync(this.baseDir)) {
       try {
-        fs.mkdirSync(this.uploadsDir, { recursive: true });
+        fs.mkdirSync(this.baseDir, { recursive: true });
       } catch {
-        // ignore if read-only or in testing
+        // ignore in readonly environments
       }
     }
   }
@@ -44,9 +62,9 @@ export class LocalEvidenceStorage implements IEvidenceStorage {
     return 'LOCAL';
   }
 
-  async upload(options: UploadEvidenceOptions): Promise<UploadResult> {
-    const ext = path.extname(options.filename) || '.jpg';
-    const key = `evidence-${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext}`;
+  async putObject(options: PutObjectOptions): Promise<{ key: string; bytes: number; url: string }> {
+    const key = validateStorageKey(options.key);
+    const maxSizeBytes = options.maxSizeBytes || 25 * 1024 * 1024; // 25MB default
 
     let buffer: Buffer;
     if (Buffer.isBuffer(options.data)) {
@@ -66,44 +84,69 @@ export class LocalEvidenceStorage implements IEvidenceStorage {
       buffer = Buffer.from('');
     }
 
-    try {
-      const filePath = path.join(this.uploadsDir, key);
-      fs.writeFileSync(filePath, buffer);
-    } catch {
-      // In-memory or test fallback
+    if (buffer.length > maxSizeBytes) {
+      throw new Error(`File size ${buffer.length} bytes exceeds maximum allowed limit of ${maxSizeBytes} bytes`);
     }
 
-    const url = `/uploads/${key}`;
+    const filePath = path.join(this.baseDir, key);
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    fs.writeFileSync(filePath, buffer);
 
     return {
-      url,
       key,
       bytes: buffer.length,
+      url: `/uploads/${key}`,
     };
   }
 
-  async getUrl(key: string): Promise<string> {
-    return `https://storage.ecopulse.local/evidence/${key}`;
+  async getObject(key: string): Promise<Buffer> {
+    const sanitized = validateStorageKey(key);
+    const filePath = path.join(this.baseDir, sanitized);
+    if (fs.existsSync(filePath)) {
+      return fs.readFileSync(filePath);
+    }
+    throw new Error(`Object not found: ${key}`);
   }
 
-  async delete(key: string): Promise<void> {
-    try {
-      const filePath = path.join(this.uploadsDir, key);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
-    } catch {
-      // ignore
+  async deleteObject(key: string): Promise<void> {
+    const sanitized = validateStorageKey(key);
+    const filePath = path.join(this.baseDir, sanitized);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
     }
   }
 
+  async getSignedUrl(key: string, _operation: 'getObject' | 'putObject' = 'getObject', _expiresInSeconds = 3600): Promise<string> {
+    const sanitized = validateStorageKey(key);
+    // Local dev signed url is a clean direct route
+    return `/uploads/${sanitized}`;
+  }
+
+  async exists(key: string): Promise<boolean> {
+    const sanitized = validateStorageKey(key);
+    const filePath = path.join(this.baseDir, sanitized);
+    return fs.existsSync(filePath);
+  }
+
+  // Backward compatibility methods for existing report uploads
   async uploadEvidence(
     data: Buffer | string,
     filename: string,
     mimeType: string,
     metadata?: Record<string, unknown>
   ): Promise<{ storageKey: string; publicUrl: string; mimeType: string; sizeBytes: number }> {
-    const res = await this.upload({ filename, mimeType, data, metadata });
+    const ext = path.extname(filename) || '.jpg';
+    const key = `evidence-${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext}`;
+    const res = await this.putObject({
+      key,
+      data,
+      contentType: mimeType,
+      metadata: metadata as Record<string, string>,
+    });
     return {
       storageKey: res.key,
       publicUrl: res.url,
@@ -113,55 +156,41 @@ export class LocalEvidenceStorage implements IEvidenceStorage {
   }
 
   async getEvidence(key: string): Promise<Buffer> {
-    const filePath = path.join(this.uploadsDir, key);
-    if (fs.existsSync(filePath)) {
-      return fs.readFileSync(filePath);
-    }
-    return Buffer.from('local-storage-verify-bytes');
+    return this.getObject(key);
   }
 
   async getAccessUrl(key: string): Promise<string> {
-    return `/uploads/${key}`;
+    return this.getSignedUrl(key);
   }
 
   async deleteEvidence(key: string): Promise<boolean> {
-    await this.delete(key);
+    await this.deleteObject(key);
     return true;
   }
 }
 
-export interface S3StorageConfig {
-  region?: string;
-  bucket?: string;
-  accessKeyId?: string;
-  secretAccessKey?: string;
-}
-
 /**
- * AWS S3 Evidence Storage Provider.
- * Depends strictly on environment configuration, generating authenticated/signed S3 URLs.
+ * AWS S3 Object Storage adapter using AWS SDK v3 with signed URLs.
  */
-export class S3EvidenceStorage implements IEvidenceStorage {
-  private region: string;
+export class S3ObjectStorage implements IObjectStorage {
+  private client: S3Client;
   private bucket: string;
-  private accessKeyId: string;
-  private secretAccessKey: string;
+  private localFallback: LocalObjectStorage;
 
-  constructor(config?: S3StorageConfig) {
-    this.region = config?.region || process.env.AWS_REGION || 'ap-south-1';
-    this.bucket = config?.bucket || process.env.AWS_S3_BUCKET || 'ecopulse-evidence';
-    this.accessKeyId = config?.accessKeyId || process.env.AWS_ACCESS_KEY_ID || '';
-    this.secretAccessKey = config?.secretAccessKey || process.env.AWS_SECRET_ACCESS_KEY || '';
+  constructor(bucket?: string, region?: string) {
+    this.bucket = bucket || process.env.AWS_S3_BUCKET || 'ecopulse-evidence-dev';
+    this.client = new S3Client({
+      region: region || process.env.AWS_REGION || 'ap-south-1',
+    });
+    this.localFallback = new LocalObjectStorage();
   }
 
   getProviderName(): string {
     return 'S3';
   }
 
-  async upload(options: UploadEvidenceOptions): Promise<UploadResult> {
-    const ext = path.extname(options.filename) || '.jpg';
-    const key = `reports/${new Date().toISOString().slice(0, 10)}/${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext}`;
-
+  async putObject(options: PutObjectOptions): Promise<{ key: string; bytes: number; url?: string }> {
+    const key = validateStorageKey(options.key);
     let buffer: Buffer;
     if (Buffer.isBuffer(options.data)) {
       buffer = options.data;
@@ -169,41 +198,153 @@ export class S3EvidenceStorage implements IEvidenceStorage {
       const base64Data = options.data.split(',')[1] || options.data;
       buffer = Buffer.from(base64Data, 'base64');
     } else {
-      buffer = Buffer.from(String(options.data || ''), 'utf-8');
+      buffer = Buffer.from(options.data || '', 'utf-8');
     }
 
-    // In a live environment with AWS SDK or presigned put:
-    // If credentials are valid, PUT to S3 endpoint; otherwise generate authoritative S3 object reference
-    const url = `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
+    try {
+      const command = new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: options.contentType || 'application/octet-stream',
+        Metadata: options.metadata,
+      });
 
-    return {
-      url,
+      await this.client.send(command);
+      return {
+        key,
+        bytes: buffer.length,
+        url: `https://${this.bucket}.s3.amazonaws.com/${key}`,
+      };
+    } catch (err) {
+      console.warn(`[S3ObjectStorage] S3 put failed, using local storage fallback:`, err);
+      return this.localFallback.putObject(options);
+    }
+  }
+
+  async getObject(key: string): Promise<Buffer> {
+    const sanitized = validateStorageKey(key);
+    try {
+      const command = new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: sanitized,
+      });
+      const response = await this.client.send(command);
+      const byteArray = await response.Body?.transformToByteArray();
+      return byteArray ? Buffer.from(byteArray) : Buffer.from('');
+    } catch (err) {
+      return this.localFallback.getObject(key);
+    }
+  }
+
+  async deleteObject(key: string): Promise<void> {
+    const sanitized = validateStorageKey(key);
+    try {
+      const command = new DeleteObjectCommand({
+        Bucket: this.bucket,
+        Key: sanitized,
+      });
+      await this.client.send(command);
+    } catch {
+      await this.localFallback.deleteObject(key);
+    }
+  }
+
+  async getSignedUrl(key: string, operation: 'getObject' | 'putObject' = 'getObject', expiresInSeconds = 3600): Promise<string> {
+    const sanitized = validateStorageKey(key);
+    try {
+      const command =
+        operation === 'putObject'
+          ? new PutObjectCommand({ Bucket: this.bucket, Key: sanitized })
+          : new GetObjectCommand({ Bucket: this.bucket, Key: sanitized });
+
+      return await awsGetSignedUrl(this.client, command, { expiresIn: expiresInSeconds });
+    } catch {
+      return this.localFallback.getSignedUrl(key, operation, expiresInSeconds);
+    }
+  }
+
+  async exists(key: string): Promise<boolean> {
+    const sanitized = validateStorageKey(key);
+    try {
+      const command = new HeadObjectCommand({
+        Bucket: this.bucket,
+        Key: sanitized,
+      });
+      await this.client.send(command);
+      return true;
+    } catch {
+      return this.localFallback.exists(key);
+    }
+  }
+}
+
+export function createObjectStorage(): IObjectStorage & LocalObjectStorage {
+  const isAws = (process.env.APP_ENV || '').toLowerCase() === 'aws' || (process.env.STORAGE_PROVIDER || '').toLowerCase() === 's3';
+  if (isAws) {
+    return new S3ObjectStorage() as any;
+  }
+  return new LocalObjectStorage();
+}
+
+export const objectStorage = createObjectStorage();
+export const storageService = objectStorage; // Backward compatibility for report routes
+export const evidenceStorage = {
+  upload: async (params: { data: Buffer; filename: string; mimeType: string; metadata?: Record<string, string> }) => {
+    const key = `reports/evidence/${Date.now()}-${params.filename}`;
+    const result = await objectStorage.putObject({
       key,
-      bytes: buffer.length,
+      data: params.data,
+      contentType: params.mimeType,
+      metadata: params.metadata,
+    });
+    return { url: result.url || `/uploads/${key}`, key };
+  },
+  getBuffer: async (keyOrUrl: string) => {
+    return objectStorage.getObject(keyOrUrl);
+  },
+};
+
+export class LocalEvidenceStorage {
+  private storage: LocalObjectStorage;
+
+  constructor(baseDir?: string) {
+    this.storage = new LocalObjectStorage(baseDir);
+  }
+
+  async uploadEvidence(
+    data: Buffer,
+    fileName: string,
+    mimeType: string,
+    metadata?: Record<string, string>
+  ): Promise<{ storageKey: string; publicUrl: string; mimeType: string; sizeBytes: number }> {
+    const storageKey = `evidence/${Date.now()}-${fileName}`;
+    const result = await this.storage.putObject({
+      key: storageKey,
+      data,
+      contentType: mimeType,
+      metadata,
+    });
+    return {
+      storageKey,
+      publicUrl: result.url || `/uploads/${storageKey}`,
+      mimeType,
+      sizeBytes: result.bytes,
     };
   }
 
-  async getUrl(key: string): Promise<string> {
-    // Generates safe direct / CDN access URL
-    return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
+  async getEvidence(storageKey: string): Promise<Buffer> {
+    return this.storage.getObject(storageKey);
   }
 
-  async delete(key: string): Promise<void> {
-    // In production issues S3 DeleteObjectCommand
-    console.log(`[S3EvidenceStorage] Deleting s3://${this.bucket}/${key}`);
+  async getAccessUrl(storageKey: string): Promise<string> {
+    return this.storage.getSignedUrl(storageKey, 'getObject');
+  }
+
+  async deleteEvidence(storageKey: string): Promise<boolean> {
+    await this.storage.deleteObject(storageKey);
+    return true;
   }
 }
 
-export function createEvidenceStorage(): IEvidenceStorage {
-  const provider = (process.env.STORAGE_PROVIDER || '').toLowerCase();
-  const hasAwsConfig = !!(process.env.AWS_S3_BUCKET && process.env.AWS_ACCESS_KEY_ID);
 
-  if (provider === 's3' || hasAwsConfig) {
-    return new S3EvidenceStorage();
-  }
-
-  return new LocalEvidenceStorage();
-}
-
-export const evidenceStorage: IEvidenceStorage = createEvidenceStorage();
-export const storageService = new LocalEvidenceStorage();

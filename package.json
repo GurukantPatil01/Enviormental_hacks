@@ -11,7 +11,8 @@
     "typecheck": "turbo run typecheck",
     "db:migrate": "pnpm --filter @ecopulse/api db:migrate",
     "db:seed": "pnpm --filter @ecopulse/api db:seed",
-    "db:check": "pnpm --filter @ecopulse/api db:check"
+    "db:check": "pnpm --filter @ecopulse/api db:check",
+    "seed:environmental": "pnpm --filter @ecopulse/api exec tsx ../../scripts/seed/environmental-demo.ts"
   },
   "devDependencies": {
     "turbo": "^2.4.4",

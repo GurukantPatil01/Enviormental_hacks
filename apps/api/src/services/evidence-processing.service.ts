@@ -1,3 +1,8 @@
+import { randomUUID } from 'node:crypto';
+import { eq } from 'drizzle-orm';
+import { db } from '../db/index.js';
+import { aiObservations, environmentalEmbeddings, environmentalEvents } from '../db/schema.js';
+import { MockEmbeddingProvider } from '../ai/embedding-provider.js';
 import { scoringAgent } from '../agents/scoring.agent.js';
 import { visionAgent } from '../agents/vision.agent.js';
 import { eventBus } from '../events/event-bus.js';
@@ -76,12 +81,72 @@ export class EvidenceProcessingService {
       });
 
       // 4. Scoring Agent: generate advisory recommendation for human review
+      let recommendation;
       if (reportId) {
-        await scoringAgent.generateRecommendation({
+        recommendation = await scoringAgent.generateRecommendation({
           entityType: 'REPORT',
           entityId: reportId,
           observation,
         });
+
+        // 5. Sync to environmental_events, ai_observations, and environmental_embeddings
+        try {
+          const events = await db
+            .select()
+            .from(environmentalEvents)
+            .where(eq(environmentalEvents.reportId, reportId))
+            .limit(1);
+
+          if (events.length > 0) {
+            const event = events[0];
+            const eventSeverity = observation.severity || 'MEDIUM';
+
+            // Update severity and status on event
+            await db
+              .update(environmentalEvents)
+              .set({
+                severity: eventSeverity,
+                status: 'ANALYZED',
+                updatedAt: new Date(),
+              })
+              .where(eq(environmentalEvents.id, event.id));
+
+            // Insert AI observation record
+            await db.insert(aiObservations).values({
+              id: randomUUID(),
+              eventId: event.id,
+              modelProvider: observation.provider || 'mock',
+              modelName: observation.model || 'mock-vision-v1',
+              wasteType: observation.category || categoryHint || 'WASTE_HOTSPOT',
+              secondaryWasteTypes: observation.detectedObjects || [],
+              severity: eventSeverity,
+              confidence: observation.confidence ?? 0.95,
+              estimatedVolume: '10-25 kg (estimated)',
+              environmentalRisk: recommendation?.reason || observation.observations || 'Environmental contamination risk',
+              publicSafetyRisk: eventSeverity === 'CRITICAL' || eventSeverity === 'HIGH' ? 'High public safety hazard' : 'Moderate public safety concern',
+              illegalDumpingLikelihood: observation.category === 'ILLEGAL_DUMPING' ? 0.9 : 0.2,
+              recommendedAction: recommendation?.reason || 'Schedule site inspection and cleanup',
+              rawMetadata: { observation, recommendation } as any,
+            });
+
+            // Insert vector embedding for semantic search
+            const embeddingProvider = new MockEmbeddingProvider(384);
+            const textToEmbed = `${event.description || ''} ${observation.category} ${observation.observations || ''} ${recommendation?.reason || ''}`;
+            const vector = await embeddingProvider.embedText(textToEmbed);
+
+            await db.insert(environmentalEmbeddings).values({
+              id: randomUUID(),
+              eventId: event.id,
+              provider: 'mock',
+              model: 'mock-embed-v1',
+              modality: 'TEXT',
+              dimensions: 384,
+              vector: vector as any,
+            });
+          }
+        } catch (dbErr) {
+          console.error('[EvidencePipeline] Error updating environmental events and AI observations:', dbErr);
+        }
       }
 
       console.log(`[EvidencePipeline] Completed AI recommendation for evidence ${evidenceId}`);
