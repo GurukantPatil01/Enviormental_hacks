@@ -6,8 +6,8 @@ const monorepoRoot = path.resolve(projectRoot, '../..');
 
 const config = getDefaultConfig(projectRoot);
 
-// 1. Watch all files within the monorepo (packages, apps)
-config.watchFolders = [monorepoRoot];
+// 1. Watch only packages within the monorepo that mobile depends on
+config.watchFolders = [path.resolve(monorepoRoot, 'packages')];
 
 // 2. Resolve packages from both apps/mobile and the monorepo root
 config.resolver.nodeModulesPaths = [

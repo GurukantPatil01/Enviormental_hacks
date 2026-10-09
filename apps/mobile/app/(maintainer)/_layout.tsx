@@ -1,9 +1,16 @@
 import { colors } from '@ecopulse/design-system';
-import { Tabs } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
 import React from 'react';
 import { Text } from 'react-native';
+import { useAuthStore } from '../../stores/auth.store';
 
 export default function MaintainerLayout() {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+
+  if (!isAuthenticated) {
+    return <Redirect href="/(auth)/welcome" />;
+  }
+
   return (
     <Tabs
       screenOptions={{

@@ -6,6 +6,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -16,7 +17,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import { api } from '../../lib/api';
 
-const RNCWebView = WebView as any;
+const RNCWebView =
+  Platform.OS === 'web'
+    ? ({ source, style }: any) => (
+        <iframe
+          srcDoc={source?.html}
+          style={{ border: 'none', width: '100%', height: '100%', ...(style || {}) }}
+        />
+      )
+    : (WebView as any);
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const PUNE_CENTER = { lat: 18.512, lng: 73.825 };
 

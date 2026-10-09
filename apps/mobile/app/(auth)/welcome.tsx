@@ -1,11 +1,35 @@
 import { colors, radius, spacing, typography } from '@ecopulse/design-system';
 import { useRouter } from 'expo-router';
-import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { api } from '../../lib/api';
+import { useAuthStore } from '../../stores/auth.store';
 
 export default function WelcomeScreen() {
   const router = useRouter();
+  const setAuth = useAuthStore((state) => state.setAuth);
+  const [demoLoading, setDemoLoading] = useState<string | null>(null);
+
+  const handleQuickDemo = async (role: 'RESIDENT' | 'MAINTAINER') => {
+    try {
+      setDemoLoading(role);
+      const email = role === 'RESIDENT' ? 'priya.sharma@example.com' : 'maintainer@ecopulse.org';
+      const res = await api.auth.login({ email, password: 'password123' });
+      setAuth(res.token, res.user);
+      if (role === 'MAINTAINER') {
+        router.replace('/(maintainer)');
+      } else {
+        router.replace('/(resident)');
+      }
+    } catch (err: any) {
+      console.error('Quick demo login error:', err);
+      // Fallback to login screen
+      router.push('/(auth)/login');
+    } finally {
+      setDemoLoading(null);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -37,20 +61,50 @@ export default function WelcomeScreen() {
 
       <View style={styles.actions}>
         <TouchableOpacity
-          style={styles.primaryButton}
-          onPress={() => router.push('/(auth)/register')}
+          style={styles.demoPrimaryButton}
+          onPress={() => handleQuickDemo('RESIDENT')}
           activeOpacity={0.8}
+          disabled={Boolean(demoLoading)}
         >
-          <Text style={styles.primaryButtonText}>Get Started</Text>
+          {demoLoading === 'RESIDENT' ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={styles.primaryButtonText}>⚡ Quick Launch (Resident Demo)</Text>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.secondaryButton}
-          onPress={() => router.push('/(auth)/login')}
+          style={styles.demoMaintainerButton}
+          onPress={() => handleQuickDemo('MAINTAINER')}
           activeOpacity={0.8}
+          disabled={Boolean(demoLoading)}
         >
-          <Text style={styles.secondaryButtonText}>I already have an account</Text>
+          {demoLoading === 'MAINTAINER' ? (
+            <ActivityIndicator color={colors.primary[900]} size="small" />
+          ) : (
+            <Text style={[styles.secondaryButtonText, { color: colors.primary[900], fontWeight: '700' }]}>
+              👷 Quick Launch (Maintainer Demo)
+            </Text>
+          )}
         </TouchableOpacity>
+
+        <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs }}>
+          <TouchableOpacity
+            style={[styles.secondaryButton, { flex: 1 }]}
+            onPress={() => router.push('/(auth)/register')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.secondaryButtonText}>Register</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.secondaryButton, { flex: 1 }]}
+            onPress={() => router.push('/(auth)/login')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.secondaryButtonText}>Sign In</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -117,6 +171,25 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     backgroundColor: colors.primary[900],
+    paddingVertical: spacing.base,
+    borderRadius: radius.lg,
+    alignItems: 'center',
+  },
+  demoPrimaryButton: {
+    backgroundColor: colors.primary[900],
+    paddingVertical: spacing.base,
+    borderRadius: radius.lg,
+    alignItems: 'center',
+    shadowColor: colors.primary[900],
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  demoMaintainerButton: {
+    backgroundColor: colors.primary[50],
+    borderColor: colors.primary[300],
+    borderWidth: 1.5,
     paddingVertical: spacing.base,
     borderRadius: radius.lg,
     alignItems: 'center',

@@ -13,12 +13,77 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MapView, { Marker, Polygon, PROVIDER_DEFAULT } from 'react-native-maps';
+import { Platform } from 'react-native';
+
 import { api } from '../../lib/api';
 
-const NativeMapView = MapView as unknown as React.ComponentType<any>;
-const NativePolygon = Polygon as unknown as React.ComponentType<any>;
-const NativeMarker = Marker as unknown as React.ComponentType<any>;
+// Conditional import for map components – works on native platforms, provides a simple placeholder on web.
+let NativeMapView: any;
+let NativePolygon: any;
+let NativeMarker: any;
+let PROVIDER_DEFAULT: any;
+
+if (Platform.OS === 'web') {
+  // Web fallback – render interactive Leaflet OpenStreetMap
+  NativeMapView = (props: any) => {
+    const mapHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        <style>
+          html, body, #map { margin: 0; padding: 0; width: 100%; height: 100%; background: #f1f5f9; }
+          .cluster-popup { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; line-height: 1.4; }
+        </style>
+      </head>
+      <body>
+        <div id="map"></div>
+        <script>
+          var map = L.map('map', { zoomControl: true }).setView([18.512, 73.825], 13);
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors'
+          }).addTo(map);
+
+          // Default Pune marker
+          L.circleMarker([18.512, 73.825], {
+            radius: 8,
+            fillColor: '#16A34A',
+            color: '#ffffff',
+            weight: 2,
+            opacity: 1,
+            fillOpacity: 0.9
+          }).addTo(map).bindPopup('<div class="cluster-popup"><strong>🌿 EcoPulse Civic Center</strong><br>Pune Smart Monitoring Active</div>');
+        </script>
+      </body>
+      </html>
+    `;
+    return (
+      <View style={[props.style, { overflow: 'hidden' }]}>
+        <iframe
+          srcDoc={mapHtml}
+          style={{ border: 'none', width: '100%', height: '100%' }}
+        />
+      </View>
+    );
+  };
+  NativePolygon = () => null;
+  NativeMarker = () => null;
+  PROVIDER_DEFAULT = undefined;
+} else {
+  // Native platforms (iOS/Android) use react-native-maps.
+  const MapView = require('react-native-maps').default;
+  const { Polygon, Marker, PROVIDER_DEFAULT: prov } = require('react-native-maps');
+  NativeMapView = MapView as unknown as React.ComponentType<any>;
+  NativePolygon = Polygon as unknown as React.ComponentType<any>;
+  NativeMarker = Marker as unknown as React.ComponentType<any>;
+  PROVIDER_DEFAULT = prov;
+}
+
+
 
 const PUNE_CENTER = { lat: 18.512, lng: 73.825 };
 
