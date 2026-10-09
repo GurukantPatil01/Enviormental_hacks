@@ -800,6 +800,31 @@ export interface AIObservation {
   createdAt: string;
 }
 
+export interface GeminiVisionAnalysis {
+  wasteDetected: boolean;
+  wastePresence: 'NONE' | 'LOW' | 'MODERATE' | 'SIGNIFICANT' | 'OVERWHELMING';
+  wasteCategory:
+    | 'WASTE_HOTSPOT'
+    | 'ILLEGAL_DUMPING'
+    | 'OVERFLOWING_BIN'
+    | 'MISSED_COLLECTION'
+    | 'MIXED_WASTE'
+    | 'CONSTRUCTION_DEBRIS'
+    | 'NO_CLEAR_ISSUE'
+    | 'OTHER';
+  secondaryCategories: string[];
+  visibleSeverity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  estimatedVolume: string;
+  potentialObstruction: 'NONE' | 'SIDEWALK' | 'STORM_DRAIN' | 'ROADWAY' | 'MULTIPLE';
+  environmentalRiskIndicators: string[];
+  evidenceQuality: 'HIGH' | 'MEDIUM' | 'LOW' | 'BLURRY_UNREADABLE';
+  limitations: string;
+  requiresHumanReview: boolean;
+  description: string;
+  recommendedAction: string;
+  detectedObjects: string[];
+}
+
 export interface EnvironmentalEmbedding {
   id: string;
   eventId: string;

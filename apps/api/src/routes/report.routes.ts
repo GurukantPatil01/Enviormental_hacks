@@ -2,9 +2,10 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { addEvidenceSchema, createReportSchema } from '@ecopulse/validation';
 import type { FastifyInstance } from 'fastify';
-import { authenticate } from '../middleware/auth.middleware.js';
+import { authenticate, requireRole } from '../middleware/auth.middleware.js';
 import { reportService } from '../services/report.service.js';
 import { storageService } from '../services/storage.service.js';
+import { evidenceProcessingService } from '../services/evidence-processing.service.js';
 
 export async function reportRoutes(app: FastifyInstance) {
   // 1. List reports
@@ -243,5 +244,40 @@ export async function reportRoutes(app: FastifyInstance) {
       });
     }
   });
+
+  // 9. Reprocess report AI analysis (Maintainers only)
+  app.post<{ Params: { id: string } }>(
+    '/reports/:id/reprocess',
+    { preHandler: [requireRole('MAINTAINER', 'WARD_ADMIN', 'SUPER_ADMIN')] },
+    async (request, reply) => {
+      try {
+        const report = await reportService.getReport(request.params.id);
+        if (!report) {
+          return reply.status(404).send({
+            error: { code: 'NOT_FOUND', message: 'Report not found' },
+          });
+        }
+
+        const evidenceList = await reportService.listEvidence(request.params.id);
+        if (!evidenceList || evidenceList.length === 0) {
+          return reply.status(400).send({
+            error: { code: 'NO_EVIDENCE', message: 'No evidence attached to report for AI analysis' },
+          });
+        }
+
+        await evidenceProcessingService.processEvidenceJob({
+          evidenceId: evidenceList[0].id,
+          reportId: request.params.id,
+          uploaderId: request.user!.id,
+        });
+
+        return reply.send({ success: true, message: 'Report AI analysis reprocessed successfully' });
+      } catch (err: any) {
+        return reply.status(err.statusCode || 500).send({
+          error: { code: 'REPROCESS_FAILED', message: err.message },
+        });
+      }
+    }
+  );
 }
 

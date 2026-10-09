@@ -201,4 +201,35 @@ export const createInterventionSchema = z.object({
 
 export type CreateInterventionInput = z.infer<typeof createInterventionSchema>;
 
+// ==========================================
+// Gemini Structured Vision Analysis Validation
+// ==========================================
+export const geminiVisionAnalysisSchema = z.object({
+  wasteDetected: z.boolean(),
+  wastePresence: z.enum(['NONE', 'LOW', 'MODERATE', 'SIGNIFICANT', 'OVERWHELMING']),
+  wasteCategory: z.enum([
+    'WASTE_HOTSPOT',
+    'ILLEGAL_DUMPING',
+    'OVERFLOWING_BIN',
+    'MISSED_COLLECTION',
+    'MIXED_WASTE',
+    'CONSTRUCTION_DEBRIS',
+    'NO_CLEAR_ISSUE',
+    'OTHER',
+  ]),
+  secondaryCategories: z.array(z.string()).default([]),
+  visibleSeverity: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']),
+  estimatedVolume: z.string().min(1),
+  potentialObstruction: z.enum(['NONE', 'SIDEWALK', 'STORM_DRAIN', 'ROADWAY', 'MULTIPLE']),
+  environmentalRiskIndicators: z.array(z.string()).default([]),
+  evidenceQuality: z.enum(['HIGH', 'MEDIUM', 'LOW', 'BLURRY_UNREADABLE']),
+  limitations: z.string(),
+  requiresHumanReview: z.boolean(),
+  description: z.string().min(1),
+  recommendedAction: z.string().min(1),
+  detectedObjects: z.array(z.string()).default([]),
+});
+
+export type GeminiVisionAnalysis = z.infer<typeof geminiVisionAnalysisSchema>;
+
 

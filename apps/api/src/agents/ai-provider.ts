@@ -231,13 +231,31 @@ export class BedrockVisionProvider extends MockVisionProvider {
   }
 }
 
+import { GeminiVisionProvider } from './gemini-provider.js';
+
 // Backward-compatible alias for existing code & tests
+export { GeminiVisionProvider };
 export const MockAIProvider = MockVisionProvider;
 export const BedrockAIProvider = BedrockVisionProvider;
 export type IAIProvider = VisionAIProvider;
 
 export function getAIProvider(): VisionAIProvider {
-  const provider = (process.env.AI_PROVIDER || 'mock').toLowerCase();
+  const provider = (
+    process.env.VISION_PROVIDER ||
+    process.env.AI_PROVIDER ||
+    'mock'
+  ).toLowerCase();
+
+  if (provider === 'gemini') {
+    const gemini = new GeminiVisionProvider();
+    if (!gemini.hasCredentials() && process.env.NODE_ENV !== 'production') {
+      console.warn(
+        '[AIProvider] VISION_PROVIDER=gemini but GEMINI_API_KEY is not set. Using MockVisionProvider fallback in non-production.'
+      );
+      return new MockVisionProvider();
+    }
+    return gemini;
+  }
   if (provider === 'bedrock') {
     return new BedrockVisionProvider();
   }

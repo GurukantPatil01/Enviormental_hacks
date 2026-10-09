@@ -2,6 +2,8 @@ import type { FastifyPluginAsync } from "fastify";
 import { EnvironmentalIntelligenceService } from "../services/intelligence.service.js";
 import { VectorRepository } from "../repositories/vector.repository.js";
 import { MockEmbeddingProvider } from "../ai/embedding-provider.js";
+import { requireRole } from "../middleware/auth.middleware.js";
+import { evidenceProcessingService } from "../services/evidence-processing.service.js";
 
 export const intelligenceRoutes: FastifyPluginAsync = async (app) => {
   const vectorRepo = new VectorRepository();
@@ -42,6 +44,40 @@ export const intelligenceRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(err.statusCode || 500).send({ success: false, error: err.message });
     }
   });
+
+  app.post(
+    "/api/intelligence/events/:id/reprocess",
+    { preHandler: [requireRole("MAINTAINER", "WARD_ADMIN", "SUPER_ADMIN")] },
+    async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const eventDetails = await intelligenceService.getEventDetails(id);
+      if (!eventDetails || !eventDetails.event) {
+        return reply.status(404).send({ success: false, error: "Event not found" });
+      }
+
+      const reportId = eventDetails.event.report_id || eventDetails.event.reportId;
+      const evidence = eventDetails.evidence || [];
+      if (!evidence || evidence.length === 0) {
+        return reply.status(400).send({ success: false, error: "No evidence found to reprocess" });
+      }
+
+      const targetEvidenceId = evidence[0].id;
+      await intelligenceService.updateEventStatus(eventDetails.event.id, "PROCESSING", (req as any).user?.id);
+
+      try {
+        await evidenceProcessingService.processEvidenceJob({
+          evidenceId: targetEvidenceId,
+          reportId: reportId || eventDetails.event.id,
+          uploaderId: (req as any).user?.id || "system-maintainer",
+        });
+
+        const updated = await intelligenceService.getEventDetails(eventDetails.event.id);
+        return reply.send({ success: true, data: updated, message: "AI Analysis reprocessed successfully" });
+      } catch (err: any) {
+        return reply.status(500).send({ success: false, error: err.message || "Reprocessing failed" });
+      }
+    }
+  );
 
   app.get("/api/intelligence/hotspots", async (req, reply) => {
     const query = req.query as { status?: string };

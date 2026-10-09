@@ -12,6 +12,9 @@ import {
   Layers,
   Check,
   XCircle,
+  RefreshCw,
+  AlertCircle,
+  Info,
 } from 'lucide-react';
 import { SeverityBadge } from '../common/SeverityBadge';
 import { StatusBadge } from '../common/StatusBadge';
@@ -38,8 +41,27 @@ export const ReportDetailPanel: React.FC<ReportDetailPanelProps> = ({
 
   const [currentStatus, setCurrentStatus] = useState<string>(report.status || 'SUBMITTED');
   const [isUpdating, setIsUpdating] = useState<boolean>(false);
+  const [isReprocessing, setIsReprocessing] = useState<boolean>(false);
+  const [reprocessStatus, setReprocessStatus] = useState<string | null>(null);
 
-  const { data: eventDetails } = useEventDetails(report?.id || null);
+  const { data: eventDetails, refetch: refetchEventDetails } = useEventDetails(report?.id || null);
+
+  const handleReprocessAI = async () => {
+    setIsReprocessing(true);
+    setReprocessStatus(null);
+    try {
+      await apiFetch(`/api/intelligence/events/${report.id}/reprocess`, {
+        method: 'POST',
+      });
+      setReprocessStatus('Vision AI re-analysis completed successfully.');
+      await refetchEventDetails();
+    } catch (err: any) {
+      console.error('Failed to reprocess AI observation:', err);
+      setReprocessStatus(err.message || 'Reprocessing failed');
+    } finally {
+      setIsReprocessing(false);
+    }
+  };
 
   useEffect(() => {
     if (report?.status) {
@@ -70,6 +92,20 @@ export const ReportDetailPanel: React.FC<ReportDetailPanelProps> = ({
     report.aiObservation ||
     (eventDetails as any)?.aiObservation ||
     eventDetails?.observation;
+
+  const rawMeta = observation?.rawMetadata || observation?.raw_metadata;
+  const geminiData = rawMeta?.geminiAnalysis || (observation as any)?.geminiAnalysis;
+  const eventStatus = (eventDetails as any)?.event?.status || report.status || currentStatus;
+
+  const modelProvider =
+    observation?.modelProvider ||
+    observation?.model_provider ||
+    (geminiData ? 'Google Gemini' : 'Vision AI Engine');
+
+  const modelName =
+    observation?.modelName ||
+    observation?.model_name ||
+    (geminiData ? 'gemini-2.5-flash-lite' : 'Autonomous Vision Agent');
 
   // Resolve mediaUrl from report object or fetched event details
   const mediaUrl =
@@ -142,52 +178,162 @@ export const ReportDetailPanel: React.FC<ReportDetailPanelProps> = ({
               <Bot className="w-4 h-4" />
               <span>AI OBSERVATION SYNTHESIS</span>
             </div>
-            {observation?.confidence !== undefined && (
-              <span className="text-[11px] font-mono text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                {(observation.confidence * 100).toFixed(0)}% Confidence
+            <div className="flex items-center space-x-2">
+              <span className="text-[10px] font-mono text-slate-400 bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700/60">
+                {modelProvider} • {modelName}
               </span>
-            )}
+              {observation?.confidence !== undefined && (
+                <span className="text-[11px] font-mono text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                  {(observation.confidence * 100).toFixed(0)}% Confidence
+                </span>
+              )}
+            </div>
           </div>
 
+          {/* Warning / Review Required Banner */}
+          {(eventStatus === 'REVIEW_REQUIRED' || geminiData?.requiresHumanReview) && (
+            <div className="p-3 rounded-lg bg-amber-950/40 border border-amber-600/40 text-amber-200 text-xs flex items-start space-x-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <div className="font-semibold text-amber-300 flex items-center space-x-1.5">
+                  <span>Human Verification Required</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    Quality: {geminiData?.evidenceQuality || 'LOW'}
+                  </span>
+                </div>
+                <div className="text-[11px] text-amber-200/80 leading-relaxed">
+                  Evidence contains ambiguous items, occlusion, or reduced lighting. Automated observations are purely advisory; human review is required before scoring or dispatch.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Failure Alert Banner */}
+          {eventStatus === 'FAILED' && (
+            <div className="p-3 rounded-lg bg-rose-950/40 border border-rose-600/40 text-rose-200 text-xs flex items-start space-x-2.5">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <div className="font-semibold text-rose-300">Vision Analysis Incomplete</div>
+                <div className="text-[11px] text-rose-200/80 leading-relaxed">
+                  The model encountered a timeout, rate limit, or image processing error. Maintainers can inspect the citizen photo and re-run analysis below.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Reprocess message feedback */}
+          {reprocessStatus && (
+            <div className="p-2.5 rounded bg-emerald-950/50 border border-emerald-800/60 text-emerald-300 text-xs flex items-center space-x-2">
+              <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>{reprocessStatus}</span>
+            </div>
+          )}
+
+          {/* Primary Structured Observation Attributes */}
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div>
               <span className="text-slate-400 block text-[10px] font-mono uppercase">Waste Category</span>
               <span className="text-slate-200 font-medium">
-                {observation?.wasteType || report.wasteType || report.category || 'General Waste'}
+                {geminiData?.wasteCategory || observation?.wasteType || report.wasteType || report.category || 'General Waste'}
               </span>
             </div>
             <div>
-              <span className="text-slate-400 block text-[10px] font-mono uppercase">Est. Volume</span>
+              <span className="text-slate-400 block text-[10px] font-mono uppercase">Visible Extent & Severity</span>
               <span className="text-slate-200 font-medium">
-                {observation?.estimatedVolume || 'Medium (approx. 2-5 kg)'}
+                {geminiData?.visibleSeverity || observation?.severity || 'MEDIUM'}
+                {geminiData?.approximateExtent ? ` (${geminiData.approximateExtent.replace(/_/g, ' ').toLowerCase()})` : ''}
               </span>
             </div>
             <div>
-              <span className="text-slate-400 block text-[10px] font-mono uppercase">Illegal Dumping Risk</span>
+              <span className="text-slate-400 block text-[10px] font-mono uppercase">Potential Obstruction</span>
               <span className="text-slate-200 font-medium">
-                {observation?.illegalDumpingLikelihood !== undefined && observation.illegalDumpingLikelihood !== null
-                  ? `${(observation.illegalDumpingLikelihood * 100).toFixed(0)}%`
-                  : 'High (82%)'}
+                {geminiData?.potentialObstruction && geminiData.potentialObstruction !== 'NONE'
+                  ? geminiData.potentialObstruction.replace(/_/g, ' ')
+                  : 'No clear obstruction detected'}
               </span>
             </div>
             <div>
-              <span className="text-slate-400 block text-[10px] font-mono uppercase">Public Safety Risk</span>
-              <span className="text-amber-400 font-medium">
-                {observation?.publicSafetyRisk || 'Moderate - drainage block hazard'}
+              <span className="text-slate-400 block text-[10px] font-mono uppercase">Evidence Quality</span>
+              <span className={`font-medium ${geminiData?.evidenceQuality === 'HIGH' ? 'text-emerald-400' : geminiData?.evidenceQuality === 'LOW' || geminiData?.evidenceQuality === 'BLURRY_UNREADABLE' ? 'text-amber-400' : 'text-slate-200'}`}>
+                {geminiData?.evidenceQuality || 'STANDARD'}
               </span>
             </div>
           </div>
 
-          {observation?.recommendedAction && (
+          {/* Environmental Risk Indicators */}
+          {geminiData?.environmentalRiskIndicators && geminiData.environmentalRiskIndicators.length > 0 && (
             <div className="pt-2 border-t border-slate-800/80">
-              <span className="text-slate-400 block text-[10px] font-mono uppercase mb-1">
-                Recommended Action
+              <span className="text-slate-400 block text-[10px] font-mono uppercase mb-1.5">
+                Visible Environmental Risk Indicators
               </span>
-              <p className="text-xs text-slate-300 bg-slate-950 p-2.5 rounded border border-slate-800 font-mono">
-                {observation.recommendedAction}
-              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {geminiData.environmentalRiskIndicators.map((risk: string, i: number) => (
+                  <span
+                    key={i}
+                    className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20"
+                  >
+                    {risk.replace(/_/g, ' ')}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
+
+          {/* Evidence Limitations / Uncertainties */}
+          {geminiData?.limitations && geminiData.limitations.length > 0 && (
+            <div className="pt-2 border-t border-slate-800/80">
+              <span className="text-slate-400 block text-[10px] font-mono uppercase mb-1">
+                Limitations & Uncertainties
+              </span>
+              <ul className="text-xs text-slate-400 list-disc list-inside space-y-0.5 font-mono text-[11px]">
+                {geminiData.limitations.map((limit: string, idx: number) => (
+                  <li key={idx} className="text-slate-300">{limit}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Recommended Action & Detailed Observations */}
+          {(geminiData?.detailedObservations || observation?.recommendedAction) && (
+            <div className="pt-2 border-t border-slate-800/80 space-y-2">
+              {geminiData?.detailedObservations && (
+                <div>
+                  <span className="text-slate-400 block text-[10px] font-mono uppercase mb-1">
+                    Visual Findings
+                  </span>
+                  <p className="text-xs text-slate-300 bg-slate-950 p-2.5 rounded border border-slate-800 leading-relaxed">
+                    {geminiData.detailedObservations}
+                  </p>
+                </div>
+              )}
+              {observation?.recommendedAction && (
+                <div>
+                  <span className="text-slate-400 block text-[10px] font-mono uppercase mb-1">
+                    Recommended Action (Advisory)
+                  </span>
+                  <p className="text-xs text-slate-300 bg-slate-950 p-2.5 rounded border border-slate-800 font-mono">
+                    {observation.recommendedAction}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Maintainer Reprocessing Control Bar */}
+          <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between">
+            <span className="text-[10px] font-mono text-slate-500">
+              Responsible AI: Advisory only. Maintainer verification required.
+            </span>
+            <button
+              onClick={handleReprocessAI}
+              disabled={isReprocessing}
+              className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-xs font-semibold text-emerald-400 hover:text-emerald-300 flex items-center space-x-1.5 transition-colors border border-emerald-900/50 shadow-sm"
+              title="Re-run Gemini Vision analysis on this evidence image"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isReprocessing ? 'animate-spin' : ''}`} />
+              <span>{isReprocessing ? 'Analyzing...' : 'Re-run AI Analysis'}</span>
+            </button>
+          </div>
         </div>
 
         {/* Spatial / Geographic Location */}
