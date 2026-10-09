@@ -102,7 +102,10 @@ export default function ReportScreen() {
       };
       setLocationCoords(newCoords);
 
-      // Reverse geocode to get a human-readable street address on native devices
+      // Reverse geocode to get a human-readable street address
+      let resolvedAddress = false;
+
+      // 1. Try Native Geocoder (iOS / Android with Play Services)
       if (Platform.OS !== 'web') {
         try {
           const addresses = await Location.reverseGeocodeAsync({
@@ -122,10 +125,33 @@ export default function ReportScreen() {
 
             if (parts.length > 0) {
               setLocationAddress(parts.join(', '));
+              resolvedAddress = true;
             }
           }
-        } catch (geoErr) {
-          console.warn('Reverse geocode error:', geoErr);
+        } catch {
+          // Native Android geocoder service may not be running on emulator/AOSP
+        }
+      }
+
+      // 2. Universal Web & Native Fallback: Free OpenStreetMap Nominatim
+      if (!resolvedAddress) {
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.coords.latitude}&lon=${position.coords.longitude}&zoom=18&addressdetails=1`,
+            { headers: { 'User-Agent': 'EcoPulse-Mobile/1.0' } }
+          );
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.display_name) {
+              const parts = data.display_name.split(',').slice(0, 3).map((s: string) => s.trim()).filter(Boolean);
+              if (parts.length > 0) {
+                setLocationAddress(parts.join(', '));
+                resolvedAddress = true;
+              }
+            }
+          }
+        } catch {
+          // Keep existing/default locationAddress if offline
         }
       }
     } catch (err: any) {
