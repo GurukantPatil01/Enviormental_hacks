@@ -156,9 +156,22 @@ export class EnvironmentalIntelligenceService {
         o.environmental_risk as obs_environmental_risk,
         o.public_safety_risk as obs_public_safety_risk,
         o.recommended_action as obs_recommended_action,
-        o.illegal_dumping_likelihood as obs_illegal_dumping_likelihood
+        o.illegal_dumping_likelihood as obs_illegal_dumping_likelihood,
+        ev.media_url as evidence_media_url,
+        ev.media_type as evidence_media_type,
+        ev.id as evidence_id,
+        ev.metadata as evidence_metadata,
+        ev.uploaded_at as evidence_uploaded_at
       FROM environmental_events e
       LEFT JOIN ai_observations o ON o.event_id = e.id
+      LEFT JOIN LATERAL (
+        SELECT ev.id, ev.media_url, ev.media_type, ev.metadata, ev.uploaded_at
+        FROM evidence ev
+        WHERE (ev.report_id IS NOT NULL AND ev.report_id::text = e.report_id)
+           OR (ev.report_id IS NOT NULL AND ev.report_id::text = e.id::text)
+        ORDER BY ev.uploaded_at DESC
+        LIMIT 1
+      ) ev ON true
       WHERE 1=1
     `;
     const params: any[] = [];
@@ -185,6 +198,15 @@ export class EnvironmentalIntelligenceService {
       status: r.status,
       source: r.source,
       severity: r.severity || r.obs_severity || 'LOW',
+      mediaUrl: r.evidence_media_url || null,
+      mediaType: r.evidence_media_type || 'IMAGE',
+      evidence: r.evidence_media_url ? [{
+        id: r.evidence_id,
+        mediaUrl: r.evidence_media_url,
+        mediaType: r.evidence_media_type || 'IMAGE',
+        metadata: r.evidence_metadata,
+        uploadedAt: r.evidence_uploaded_at ? new Date(r.evidence_uploaded_at).toISOString() : undefined,
+      }] : [],
       createdAt: new Date(r.created_at).toISOString(),
       updatedAt: new Date(r.updated_at).toISOString(),
       observation: r.obs_waste_type ? {
@@ -214,10 +236,24 @@ export class EnvironmentalIntelligenceService {
       [event.id]
     );
 
+    const evidenceRes = await pool.query(
+      `SELECT id, media_url as "mediaUrl", media_type as "mediaType", verification_status as "verificationStatus", uploaded_at as "uploadedAt", metadata 
+       FROM evidence 
+       WHERE report_id::text = $1 OR report_id::text = $2
+       ORDER BY uploaded_at DESC`,
+      [event.report_id || '', event.id]
+    );
+
     return {
-      event,
+      event: {
+        ...event,
+        mediaUrl: evidenceRes.rows[0]?.mediaUrl || null,
+        mediaType: evidenceRes.rows[0]?.mediaType || 'IMAGE',
+      },
       aiObservation: obsRes.rows[0] || null,
       embedding: embeddingRes.rows[0] || null,
+      evidence: evidenceRes.rows || [],
+      mediaUrl: evidenceRes.rows[0]?.mediaUrl || null,
     };
   }
 

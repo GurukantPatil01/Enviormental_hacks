@@ -18,6 +18,8 @@ import { StatusBadge } from '../common/StatusBadge';
 import { EnvironmentalMap } from '../map/EnvironmentalMap';
 import { formatDate, formatRelativeTime } from '../../lib/formatters';
 import { apiFetch } from '../../lib/api';
+import { EvidencePhotoCard } from './EvidencePhotoCard';
+import { useEventDetails } from '../../hooks/useReports';
 
 interface ReportDetailPanelProps {
   report: any | null;
@@ -36,6 +38,8 @@ export const ReportDetailPanel: React.FC<ReportDetailPanelProps> = ({
 
   const [currentStatus, setCurrentStatus] = useState<string>(report.status || 'SUBMITTED');
   const [isUpdating, setIsUpdating] = useState<boolean>(false);
+
+  const { data: eventDetails } = useEventDetails(report?.id || null);
 
   useEffect(() => {
     if (report?.status) {
@@ -61,15 +65,32 @@ export const ReportDetailPanel: React.FC<ReportDetailPanelProps> = ({
 
   const lat = report.latitude ?? (report.event?.latitude);
   const lng = report.longitude ?? (report.event?.longitude);
-  const observation = report.observation || report.aiObservation;
+  const observation =
+    report.observation ||
+    report.aiObservation ||
+    (eventDetails as any)?.aiObservation ||
+    eventDetails?.observation;
+
+  // Resolve mediaUrl from report object or fetched event details
+  const mediaUrl =
+    report.mediaUrl ||
+    report.evidence?.[0]?.mediaUrl ||
+    report.event?.mediaUrl ||
+    eventDetails?.mediaUrl ||
+    (eventDetails as any)?.evidence?.[0]?.mediaUrl;
+
+  const evidenceMetadata =
+    report.evidence?.[0]?.metadata ||
+    (eventDetails as any)?.evidence?.[0]?.metadata ||
+    report.metadata;
 
   return (
-    <div className="fixed inset-y-0 right-0 w-full max-w-xl bg-slate-950 border-l border-slate-800 shadow-2xl z-50 flex flex-col font-sans">
-      {/* Top Bar */}
-      <div className="h-14 px-5 border-b border-slate-800 flex items-center justify-between shrink-0 bg-slate-900/60">
+    <div className="fixed inset-y-0 right-0 w-full max-w-xl bg-slate-950 border-l border-emerald-900/30 shadow-2xl z-50 flex flex-col font-sans">
+      {/* Top Bar with EcoPulse Emerald Theme */}
+      <div className="h-14 px-5 border-b border-emerald-900/30 flex items-center justify-between shrink-0 bg-gradient-to-r from-emerald-950/40 via-slate-900/60 to-slate-950">
         <div className="flex items-center space-x-2.5">
-          <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-            INCIDENT INTELLIGENCE
+          <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
+            🌲 INCIDENT INTELLIGENCE
           </span>
           <span className="font-mono text-xs text-slate-400 select-all truncate max-w-[160px]">
             {report.id}
@@ -101,8 +122,21 @@ export const ReportDetailPanel: React.FC<ReportDetailPanelProps> = ({
           </h2>
         </div>
 
+        {/* 1. CITIZEN EVIDENCE PHOTO CARD (Maintainer Inspection) */}
+        <div className="space-y-1.5">
+          <EvidencePhotoCard
+            mediaUrl={mediaUrl}
+            description={report.description || report.title}
+            timestamp={report.timestamp || report.createdAt}
+            latitude={lat}
+            longitude={lng}
+            metadata={evidenceMetadata}
+            verificationStatus={currentStatus}
+          />
+        </div>
+
         {/* AI Observation Section */}
-        <div className="p-4 rounded-lg bg-slate-900/70 border border-slate-800/80 space-y-3.5">
+        <div className="p-4 rounded-xl bg-slate-900/70 border border-emerald-900/30 space-y-3.5 shadow-sm">
           <div className="flex items-center justify-between border-b border-slate-800 pb-2">
             <div className="flex items-center space-x-2 text-emerald-400 font-mono text-xs font-semibold">
               <Bot className="w-4 h-4" />

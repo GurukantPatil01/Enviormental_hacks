@@ -759,6 +759,15 @@ export interface EnvironmentalEvent {
   status: string;
   source: string; // 'CITIZEN_REPORT', 'IOT_SENSOR', 'DRONE_SCAN', 'MANUAL_AUDIT'
   severity?: string;
+  mediaUrl?: string | null;
+  mediaType?: string | null;
+  evidence?: Array<{
+    id: string;
+    mediaUrl: string;
+    mediaType?: string;
+    metadata?: Record<string, unknown> | null;
+    uploadedAt?: string;
+  }>;
   observation?: {
     wasteType: string;
     severity?: string;

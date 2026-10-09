@@ -49,3 +49,15 @@ export function formatPercentage(val?: number): string {
   if (val === undefined || val === null) return '0%';
   return `${Math.round(val * 100)}%`;
 }
+
+export function getEvidenceImageUrl(rawUrl?: string | null): string | null {
+  if (!rawUrl) return null;
+  const trimmed = rawUrl.trim();
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('data:')) {
+    return trimmed;
+  }
+  if (trimmed.startsWith('/uploads/')) {
+    return trimmed;
+  }
+  return `/uploads/${trimmed}`;
+}

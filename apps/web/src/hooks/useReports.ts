@@ -10,6 +10,16 @@ export interface EnvironmentalEventItem {
   status: string;
   source: string;
   timestamp: string;
+  mediaUrl?: string | null;
+  mediaType?: string | null;
+  evidence?: Array<{
+    id: string;
+    mediaUrl: string;
+    mediaType?: string;
+    verificationStatus?: string;
+    metadata?: Record<string, unknown>;
+    uploadedAt?: string;
+  }>;
   observation?: {
     wasteType: string;
     severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
