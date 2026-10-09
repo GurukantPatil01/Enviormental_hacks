@@ -1,8 +1,10 @@
+import path from 'node:path';
 import dotenv from 'dotenv';
 import { buildApp } from './app.js';
 import { runMigrations } from './db/migrate.js';
 
 dotenv.config();
+dotenv.config({ path: path.resolve(process.cwd(), '../../.env') });
 
 const port = Number(process.env.PORT) || 4000;
 const host = process.env.HOST || '0.0.0.0';
