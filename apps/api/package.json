@@ -7,13 +7,14 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "test": "vitest run",
+    "test": "vitest run --fileParallelism=false",
     "typecheck": "tsc --noEmit",
     "lint": "echo 'api lint passed'",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
-    "db:check": "tsx src/db/check-connection.ts"
+    "db:check": "tsx src/db/check-connection.ts",
+    "s3:check": "tsx ../../scripts/check-s3.ts"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1147.0",

@@ -235,6 +235,12 @@ export class EcoPulseClient {
         body: JSON.stringify({ data, filename, mimeType }),
       });
     },
+    getPresignedUpload: (params: { filename?: string; mimeType?: string } = {}): Promise<{ storageKey: string; uploadUrl: string; accessUrl: string; mimeType: string; provider: string }> => {
+      return this.request<{ storageKey: string; uploadUrl: string; accessUrl: string; mimeType: string; provider: string }>('/reports/presigned-upload', {
+        method: 'POST',
+        body: JSON.stringify(params),
+      });
+    },
   };
 
   // Verification & Human Review Endpoints

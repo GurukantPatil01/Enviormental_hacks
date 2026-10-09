@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+import path from 'node:path';
 import { addEvidenceSchema, createReportSchema } from '@ecopulse/validation';
 import type { FastifyInstance } from 'fastify';
 import { authenticate } from '../middleware/auth.middleware.js';
@@ -181,9 +183,54 @@ export async function reportRoutes(app: FastifyInstance) {
     }
   );
 
-  // 8. Serve local evidence files
+  // 7b. Request presigned upload URL for direct AWS S3 client-side uploads
+  app.post(
+    '/reports/presigned-upload',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        const body = (request.body || {}) as {
+          filename?: string;
+          mimeType?: string;
+        };
+
+        const ext = path.extname(body.filename || '') || '.jpg';
+        const key = `reports/evidence/${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext}`;
+        const mimeType = body.mimeType || 'image/jpeg';
+
+        const uploadUrl = await storageService.getSignedUrl(key, 'putObject', 900); // 15 mins
+        const accessUrl = await storageService.getSignedUrl(key, 'getObject', 7 * 24 * 3600); // 7 days
+
+        return reply.send({
+          data: {
+            storageKey: key,
+            uploadUrl,
+            accessUrl,
+            mimeType,
+            provider: storageService.getProviderName(),
+          },
+        });
+      } catch (err: any) {
+        return reply.status(500).send({
+          error: {
+            code: 'PRESIGNED_UPLOAD_FAILED',
+            message: err.message || 'Failed to generate presigned upload URL',
+          },
+        });
+      }
+    }
+  );
+
+  // 8. Serve evidence files or redirect to S3 presigned URL
   app.get<{ Params: { filename: string } }>('/uploads/:filename', async (request, reply) => {
     try {
+      if (storageService.getProviderName() === 'S3') {
+        const url = await storageService.getAccessUrl(request.params.filename);
+        if (url && url.startsWith('http')) {
+          return reply.redirect(url, 302);
+        }
+      }
+
       const buffer = await storageService.getEvidence(request.params.filename);
       reply.header('Content-Type', 'image/jpeg');
       return reply.send(buffer);

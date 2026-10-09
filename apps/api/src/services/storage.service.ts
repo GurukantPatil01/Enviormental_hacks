@@ -25,6 +25,15 @@ export interface IObjectStorage {
   getSignedUrl(key: string, operation?: 'getObject' | 'putObject', expiresInSeconds?: number): Promise<string>;
   exists(key: string): Promise<boolean>;
   getProviderName(): string;
+  uploadEvidence(
+    data: Buffer | string,
+    filename: string,
+    mimeType: string,
+    metadata?: Record<string, unknown>
+  ): Promise<{ storageKey: string; publicUrl: string; mimeType: string; sizeBytes: number }>;
+  getEvidence(key: string): Promise<Buffer>;
+  getAccessUrl(key: string): Promise<string>;
+  deleteEvidence(key: string): Promise<boolean>;
 }
 
 /**
@@ -177,16 +186,63 @@ export class S3ObjectStorage implements IObjectStorage {
   private bucket: string;
   private localFallback: LocalObjectStorage;
 
-  constructor(bucket?: string, region?: string) {
-    this.bucket = bucket || process.env.AWS_S3_BUCKET || 'ecopulse-evidence-dev';
-    this.client = new S3Client({
+  constructor(
+    bucket?: string,
+    region?: string,
+    options?: {
+      credentials?: { accessKeyId: string; secretAccessKey: string; sessionToken?: string };
+      endpoint?: string;
+    }
+  ) {
+    this.bucket =
+      bucket ||
+      process.env.AWS_S3_BUCKET ||
+      process.env.S3_BUCKET_NAME ||
+      'ecopulse-evidence-dev';
+
+    // Prevent AWS SDK v3 from stalling on EC2 metadata (IMDS) probes when running in local dev / test
+    if (
+      process.env.NODE_ENV === 'test' ||
+      process.env.VITEST ||
+      (!process.env.AWS_EXECUTION_ENV && !process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI)
+    ) {
+      process.env.AWS_EC2_METADATA_DISABLED = process.env.AWS_EC2_METADATA_DISABLED ?? 'true';
+    }
+
+    const clientConfig: Record<string, any> = {
       region: region || process.env.AWS_REGION || 'ap-south-1',
-    });
+    };
+
+    if (options?.credentials) {
+      clientConfig.credentials = options.credentials;
+    } else if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+      clientConfig.credentials = {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+        ...(process.env.AWS_SESSION_TOKEN ? { sessionToken: process.env.AWS_SESSION_TOKEN } : {}),
+      };
+    }
+
+    const endpoint = options?.endpoint || process.env.AWS_S3_ENDPOINT || process.env.AWS_ENDPOINT_URL_S3;
+    if (endpoint) {
+      clientConfig.endpoint = endpoint;
+      clientConfig.forcePathStyle = true;
+    }
+
+    this.client = new S3Client(clientConfig);
     this.localFallback = new LocalObjectStorage();
   }
 
   getProviderName(): string {
     return 'S3';
+  }
+
+  getBucketName(): string {
+    return this.bucket;
+  }
+
+  getS3Client(): S3Client {
+    return this.client;
   }
 
   async putObject(options: PutObjectOptions): Promise<{ key: string; bytes: number; url?: string }> {
@@ -197,8 +253,16 @@ export class S3ObjectStorage implements IObjectStorage {
     } else if (typeof options.data === 'string' && options.data.startsWith('data:')) {
       const base64Data = options.data.split(',')[1] || options.data;
       buffer = Buffer.from(base64Data, 'base64');
+    } else if (typeof options.data === 'string') {
+      const trimmed = options.data.trim();
+      const isBase64 = trimmed.length > 50 && /^[A-Za-z0-9+/=\r\n]+$/.test(trimmed);
+      if (isBase64) {
+        buffer = Buffer.from(trimmed, 'base64');
+      } else {
+        buffer = Buffer.from(options.data, 'utf-8');
+      }
     } else {
-      buffer = Buffer.from(options.data || '', 'utf-8');
+      buffer = Buffer.from('');
     }
 
     try {
@@ -206,7 +270,7 @@ export class S3ObjectStorage implements IObjectStorage {
         Bucket: this.bucket,
         Key: key,
         Body: buffer,
-        ContentType: options.contentType || 'application/octet-stream',
+        ContentType: options.contentType || 'image/jpeg',
         Metadata: options.metadata,
       });
 
@@ -276,6 +340,49 @@ export class S3ObjectStorage implements IObjectStorage {
     } catch {
       return this.localFallback.exists(key);
     }
+  }
+
+  async uploadEvidence(
+    data: Buffer | string,
+    filename: string,
+    mimeType: string,
+    metadata?: Record<string, unknown>
+  ): Promise<{ storageKey: string; publicUrl: string; mimeType: string; sizeBytes: number }> {
+    const ext = path.extname(filename) || '.jpg';
+    const key = `reports/evidence/${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext}`;
+    const res = await this.putObject({
+      key,
+      data,
+      contentType: mimeType,
+      metadata: metadata as Record<string, string>,
+    });
+
+    let accessUrl: string;
+    try {
+      accessUrl = await this.getSignedUrl(res.key, 'getObject', 7 * 24 * 3600);
+    } catch {
+      accessUrl = res.url || `https://${this.bucket}.s3.amazonaws.com/${res.key}`;
+    }
+
+    return {
+      storageKey: res.key,
+      publicUrl: accessUrl,
+      mimeType,
+      sizeBytes: res.bytes,
+    };
+  }
+
+  async getEvidence(key: string): Promise<Buffer> {
+    return this.getObject(key);
+  }
+
+  async getAccessUrl(key: string): Promise<string> {
+    return this.getSignedUrl(key, 'getObject', 7 * 24 * 3600);
+  }
+
+  async deleteEvidence(key: string): Promise<boolean> {
+    await this.deleteObject(key);
+    return true;
   }
 }
 
