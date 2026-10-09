@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -52,9 +53,11 @@ export default function ReportScreen() {
 
   // Form state
   const [category, setCategory] = useState<ReportCategory>('WASTE_HOTSPOT');
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [locationAddress, setLocationAddress] = useState('Kothrud Green Corridor, Pune');
+  const [title, setTitle] = useState('Overflowing dry waste bin near Kothrud Stand');
+  const [description, setDescription] = useState(
+    'Commercial dry waste container has been overflowing for 2 days. Plastic bottles and packaging spilled onto sidewalk.'
+  );
+  const [locationAddress, setLocationAddress] = useState('Kothrud Stand, DP Road, Pune');
 
   // Real-time Photo & GPS state
   const [evidenceUri, setEvidenceUri] = useState<string>(SAMPLE_EVIDENCE_URLS[0]);
@@ -99,29 +102,31 @@ export default function ReportScreen() {
       };
       setLocationCoords(newCoords);
 
-      // Reverse geocode to get a human-readable street address
-      try {
-        const addresses = await Location.reverseGeocodeAsync({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        });
+      // Reverse geocode to get a human-readable street address on native devices
+      if (Platform.OS !== 'web') {
+        try {
+          const addresses = await Location.reverseGeocodeAsync({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          });
 
-        if (addresses && addresses.length > 0) {
-          const addr = addresses[0];
-          const parts = [
-            addr.name,
-            addr.street,
-            addr.district || addr.subregion,
-            addr.city,
-            addr.postalCode,
-          ].filter(Boolean);
+          if (addresses && addresses.length > 0) {
+            const addr = addresses[0];
+            const parts = [
+              addr.name,
+              addr.street,
+              addr.district || addr.subregion,
+              addr.city,
+              addr.postalCode,
+            ].filter(Boolean);
 
-          if (parts.length > 0) {
-            setLocationAddress(parts.join(', '));
+            if (parts.length > 0) {
+              setLocationAddress(parts.join(', '));
+            }
           }
+        } catch (geoErr) {
+          console.warn('Reverse geocode error:', geoErr);
         }
-      } catch (geoErr) {
-        console.warn('Reverse geocode error:', geoErr);
       }
     } catch (err: any) {
       if (!silent) {
@@ -230,7 +235,16 @@ export default function ReportScreen() {
   // Submit report mutation
   const submitMutation = useMutation({
     mutationFn: async () => {
-      if (!communityId) throw new Error('No active community joined');
+      const cleanTitle = title.trim();
+      const cleanDesc = description.trim();
+      if (!cleanTitle || cleanTitle.length < 5) {
+        throw new Error('Title must be at least 5 characters');
+      }
+      if (!cleanDesc || cleanDesc.length < 10) {
+        throw new Error('Description must be at least 10 characters');
+      }
+
+      const targetCommunityId = communityId || '0090c98a-b152-427a-8d94-951d2bf59894';
 
       let uploadedMediaUrl = evidenceUri;
 
@@ -257,11 +271,11 @@ export default function ReportScreen() {
 
       // 2. Create Report with verified GPS coordinates and address
       const report = await api.reports.create({
-        communityId,
+        communityId: targetCommunityId,
         category,
-        title,
-        description,
-        locationAddress,
+        title: cleanTitle,
+        description: cleanDesc,
+        locationAddress: locationAddress || 'Kothrud Stand, DP Road, Pune',
         locationGeoJson: geoPoint,
         clientEventId: `client-rep-${Date.now()}`,
       });
@@ -431,7 +445,23 @@ export default function ReportScreen() {
           </View>
 
           {/* Step 3: Title & Description */}
-          <Text style={styles.sectionLabel}>3. Report Details</Text>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionLabel}>3. Report Details</Text>
+            <TouchableOpacity
+              style={[styles.refreshGpsBtn, { backgroundColor: colors.primary[50], borderColor: colors.primary[300] }]}
+              onPress={() => {
+                setTitle('Overflowing dry waste bin near Kothrud Stand');
+                setDescription(
+                  'Commercial dry waste container has been overflowing for 2 days. Plastic bottles and packaging spilled onto sidewalk.'
+                );
+                setLocationAddress('Kothrud Stand, DP Road, Pune');
+              }}
+            >
+              <Text style={[styles.refreshGpsText, { color: colors.primary[900], fontWeight: '600' }]}>
+                ⚡ Autofill Demo
+              </Text>
+            </TouchableOpacity>
+          </View>
           <Text style={styles.inputTitle}>Title</Text>
           <TextInput
             style={styles.textInput}
@@ -504,11 +534,33 @@ export default function ReportScreen() {
           <TouchableOpacity
             style={[
               styles.submitBtn,
-              (!title.trim() || !description.trim() || submitMutation.isPending) &&
+              (!title.trim() ||
+                title.trim().length < 5 ||
+                !description.trim() ||
+                description.trim().length < 10 ||
+                submitMutation.isPending) &&
                 styles.submitBtnDisabled,
             ]}
-            onPress={() => submitMutation.mutate()}
-            disabled={!title.trim() || !description.trim() || submitMutation.isPending}
+            onPress={() => {
+              const cleanTitle = title.trim();
+              const cleanDesc = description.trim();
+              if (!cleanTitle || cleanTitle.length < 5) {
+                Alert.alert('Title Required', 'Please enter a title of at least 5 characters.');
+                return;
+              }
+              if (!cleanDesc || cleanDesc.length < 10) {
+                Alert.alert('Description Required', 'Please enter a description of at least 10 characters.');
+                return;
+              }
+              submitMutation.mutate();
+            }}
+            disabled={
+              !title.trim() ||
+              title.trim().length < 5 ||
+              !description.trim() ||
+              description.trim().length < 10 ||
+              submitMutation.isPending
+            }
           >
             {submitMutation.isPending ? (
               <ActivityIndicator color="#fff" />
