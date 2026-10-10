@@ -945,4 +945,63 @@ export interface MapSpec {
   layers: MapLayer[];
 }
 
+// ==========================================
+// Google ADK: Dumping Analysis & Scoring Types
+// ==========================================
+export type DumpingClassification =
+  | 'COMMERCIAL_FLYWASHDOWN'
+  | 'RESIDENTIAL_BULK'
+  | 'CONSTRUCTION_DEMOLITION'
+  | 'ROUTINE_BIN_OVERFLOW'
+  | 'HAZARDOUS_CHEMICAL'
+  | 'LITTERING'
+  | 'UNKNOWN_OTHER';
+
+export type DumpingRepeatRisk = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL_REPEAT_HOTSPOT';
+
+export type DumpingInterventionType =
+  | 'DISPATCH_FIELD_CREW'
+  | 'INSTALL_SURVEILLANCE'
+  | 'DRAIN_CLEARANCE'
+  | 'ENFORCEMENT_INVESTIGATION'
+  | 'COMMUNITY_DRIVE'
+  | 'REGULAR_COLLECTION_ADJUSTMENT';
+
+export interface DumpingAnalysis {
+  dumpingLikelihood: number;
+  dumpingClassification: DumpingClassification;
+  repeatLocationRisk: DumpingRepeatRisk;
+  drainageRunoffRisk: boolean;
+  estimatedVolumeCategory: 'SMALL_BAG' | 'MEDIUM_PILE' | 'LARGE_VEHICULAR_LOAD' | 'MASSIVE_ACCUMULATION';
+  recommendedIntervention: DumpingInterventionType;
+  deterrenceStrategy: string;
+  reasoning: string;
+  detectedKeyItems: string[];
+}
+
+export type ScoringPriorityLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+export type ScoringUrgencyTimeframe = 'IMMEDIATE_4H' | 'WITHIN_24H' | 'SCHEDULED_48H' | 'ROUTINE_7D';
+
+export interface ScoringAnalysis {
+  priorityScore: number; // 0 - 100
+  priorityLevel: ScoringPriorityLevel;
+  recommendedAction:
+    | 'VERIFY_REPORT'
+    | 'DISPATCH_FIELD_TASK'
+    | 'REQUEST_MORE_EVIDENCE'
+    | 'SCHEDULE_INSPECTION'
+    | 'ESCALATE_HOTSPOT';
+  recommendedPointsReward: number;
+  urgencyTimeframe: ScoringUrgencyTimeframe;
+  requiresHumanReview: boolean;
+  reason: string;
+  confidence: number;
+  riskFactorBreakdown: {
+    severityWeight: number;
+    dumpingWeight: number;
+    publicSafetyWeight: number;
+    environmentalWeight: number;
+  };
+}
+
 

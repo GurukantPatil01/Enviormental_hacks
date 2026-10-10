@@ -178,44 +178,6 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* Active Mission Card */}
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionSuper}>ACTIVE MISSION</Text>
-            <TouchableOpacity onPress={() => router.push('/(resident)/missions')}>
-              <Text style={styles.viewAllLink}>View All Missions →</Text>
-            </TouchableOpacity>
-          </View>
-
-          {activeMission ? (
-            <TouchableOpacity
-              style={styles.activeMissionBox}
-              onPress={() => router.push(`/(resident)/mission/${activeMission.id}` as any)}
-              activeOpacity={0.8}
-            >
-              <View style={styles.missionTitleRow}>
-                <Text style={styles.missionTitle}>{activeMission.title}</Text>
-                <View style={styles.rewardPill}>
-                  <Text style={styles.rewardPillText}>+{activeMission.pointsReward} pts</Text>
-                </View>
-              </View>
-              <Text style={styles.missionDesc} numberOfLines={2}>
-                {activeMission.description}
-              </Text>
-              <View style={styles.missionStatusRow}>
-                <Text style={styles.missionStatus}>
-                  Status:{' '}
-                  <Text style={{ fontWeight: '700', color: colors.primary[700] }}>
-                    {activeMission.userParticipationStatus || 'NOT_STARTED'}
-                  </Text>
-                </Text>
-                <Text style={styles.tapAction}>Tap to view / complete →</Text>
-              </View>
-            </TouchableOpacity>
-          ) : (
-            <Text style={styles.emptyText}>No active missions. Check the missions tab!</Text>
-          )}
-        </View>
 
         {/* Recent Activity Feed */}
         <View style={styles.sectionCard}>

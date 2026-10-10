@@ -4,6 +4,7 @@ import { db } from '../db/index.js';
 import { aiObservations, environmentalEmbeddings, environmentalEvents } from '../db/schema.js';
 import { MockEmbeddingProvider } from '../ai/embedding-provider.js';
 import { scoringAgent } from '../agents/scoring.agent.js';
+import { dumpingAnalysisAgent } from '../agents/adk-dumping.agent.js';
 import { visionAgent } from '../agents/vision.agent.js';
 import { eventBus } from '../events/event-bus.js';
 import { evidenceProcessingQueue } from '../queue/job-queue.js';
@@ -53,12 +54,19 @@ export class EvidenceProcessingService {
       // 1. Fetch report details for context
       let categoryHint = 'WASTE_HOTSPOT';
       let locationAddress = 'Community Area';
+      let reportLat: number | undefined;
+      let reportLng: number | undefined;
 
       if (reportId) {
         const report = await reportRepository.findById(reportId);
         if (report) {
           categoryHint = report.category;
           locationAddress = report.locationAddress || locationAddress;
+          const coords = (report.locationGeoJson as any)?.coordinates;
+          if (Array.isArray(coords)) {
+            reportLng = coords[0];
+            reportLat = coords[1];
+          }
         }
       }
 
@@ -80,6 +88,16 @@ export class EvidenceProcessingService {
         locationAddress,
       });
 
+      // 3b. Google ADK Dumping Analysis Agent
+      const dumpingAnalysis = await dumpingAnalysisAgent.analyze({
+        evidenceId,
+        reportId,
+        observation,
+        latitude: reportLat,
+        longitude: reportLng,
+        locationAddress,
+      });
+
       // 4. Scoring Agent: generate advisory recommendation for human review
       let recommendation;
       if (reportId) {
@@ -87,6 +105,7 @@ export class EvidenceProcessingService {
           entityType: 'REPORT',
           entityId: reportId,
           observation,
+          dumpingAnalysis,
         });
 
         // 5. Sync to environmental_events, ai_observations, and environmental_embeddings
@@ -101,9 +120,12 @@ export class EvidenceProcessingService {
             const event = events[0];
             const eventSeverity = observation.severity || 'MEDIUM';
             const geminiData = (observation as any).geminiAnalysis;
+            const scoringAnalysis = (recommendation as any)?.scoringAnalysis;
 
             // Flag for human review if ambiguous or poor quality
-            const needsHumanReview = Boolean(geminiData?.requiresHumanReview);
+            const needsHumanReview =
+              Boolean(geminiData?.requiresHumanReview) ||
+              Boolean(scoringAnalysis?.requiresHumanReview);
             const eventStatus = needsHumanReview ? 'REVIEW_REQUIRED' : 'ANALYZED';
 
             // Update severity and status on event
@@ -131,7 +153,11 @@ export class EvidenceProcessingService {
               secondaryWasteTypes: observation.detectedObjects || [],
               severity: eventSeverity,
               confidence: observation.confidence ?? 0.85,
-              estimatedVolume: geminiData?.estimatedVolume || (observation as any).estimatedVolume || 'Moderate visible volume',
+              estimatedVolume:
+                dumpingAnalysis?.estimatedVolumeCategory ||
+                geminiData?.estimatedVolume ||
+                (observation as any).estimatedVolume ||
+                'Moderate visible volume',
               environmentalRisk:
                 geminiData?.environmentalRiskIndicators?.join(', ') ||
                 recommendation?.reason ||
@@ -143,12 +169,20 @@ export class EvidenceProcessingService {
                   : eventSeverity === 'CRITICAL' || eventSeverity === 'HIGH'
                   ? 'High public safety hazard'
                   : 'Moderate public safety concern',
-              illegalDumpingLikelihood: observation.category === 'ILLEGAL_DUMPING' ? 0.9 : 0.2,
+              illegalDumpingLikelihood:
+                dumpingAnalysis?.dumpingLikelihood ?? (observation.category === 'ILLEGAL_DUMPING' ? 0.9 : 0.2),
               recommendedAction:
+                dumpingAnalysis?.deterrenceStrategy ||
                 geminiData?.recommendedAction ||
                 recommendation?.reason ||
                 'Schedule site inspection and cleanup',
-              rawMetadata: { observation, recommendation, geminiAnalysis: geminiData } as any,
+              rawMetadata: {
+                observation,
+                recommendation,
+                geminiAnalysis: geminiData,
+                dumpingAnalysis,
+                scoringAnalysis,
+              } as any,
             };
 
             if (existingObs.length > 0) {

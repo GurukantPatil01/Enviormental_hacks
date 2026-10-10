@@ -232,4 +232,64 @@ export const geminiVisionAnalysisSchema = z.object({
 
 export type GeminiVisionAnalysis = z.infer<typeof geminiVisionAnalysisSchema>;
 
+// ==========================================
+// Google ADK: Dumping Analysis Agent Validation
+// ==========================================
+export const dumpingAnalysisSchema = z.object({
+  dumpingLikelihood: z.number().min(0).max(1),
+  dumpingClassification: z.enum([
+    'COMMERCIAL_FLYWASHDOWN',
+    'RESIDENTIAL_BULK',
+    'CONSTRUCTION_DEMOLITION',
+    'ROUTINE_BIN_OVERFLOW',
+    'HAZARDOUS_CHEMICAL',
+    'LITTERING',
+    'UNKNOWN_OTHER',
+  ]),
+  repeatLocationRisk: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL_REPEAT_HOTSPOT']),
+  drainageRunoffRisk: z.boolean(),
+  estimatedVolumeCategory: z.enum(['SMALL_BAG', 'MEDIUM_PILE', 'LARGE_VEHICULAR_LOAD', 'MASSIVE_ACCUMULATION']),
+  recommendedIntervention: z.enum([
+    'DISPATCH_FIELD_CREW',
+    'INSTALL_SURVEILLANCE',
+    'DRAIN_CLEARANCE',
+    'ENFORCEMENT_INVESTIGATION',
+    'COMMUNITY_DRIVE',
+    'REGULAR_COLLECTION_ADJUSTMENT',
+  ]),
+  deterrenceStrategy: z.string().min(1),
+  reasoning: z.string().min(1),
+  detectedKeyItems: z.array(z.string()).default([]),
+});
+
+export type DumpingAnalysis = z.infer<typeof dumpingAnalysisSchema>;
+
+// ==========================================
+// Google ADK: Scoring & Prioritization Agent Validation
+// ==========================================
+export const scoringAnalysisSchema = z.object({
+  priorityScore: z.number().min(0).max(100),
+  priorityLevel: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']),
+  recommendedAction: z.enum([
+    'VERIFY_REPORT',
+    'DISPATCH_FIELD_TASK',
+    'REQUEST_MORE_EVIDENCE',
+    'SCHEDULE_INSPECTION',
+    'ESCALATE_HOTSPOT',
+  ]),
+  recommendedPointsReward: z.number().min(0).max(100),
+  urgencyTimeframe: z.enum(['IMMEDIATE_4H', 'WITHIN_24H', 'SCHEDULED_48H', 'ROUTINE_7D']),
+  requiresHumanReview: z.boolean(),
+  reason: z.string().min(1),
+  confidence: z.number().min(0).max(1),
+  riskFactorBreakdown: z.object({
+    severityWeight: z.number(),
+    dumpingWeight: z.number(),
+    publicSafetyWeight: z.number(),
+    environmentalWeight: z.number(),
+  }),
+});
+
+export type ScoringAnalysis = z.infer<typeof scoringAnalysisSchema>;
+
 

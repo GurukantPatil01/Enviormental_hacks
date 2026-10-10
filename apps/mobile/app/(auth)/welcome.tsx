@@ -46,7 +46,7 @@ export default function WelcomeScreen() {
         <View style={styles.featureList}>
           <View style={styles.featureItem}>
             <Text style={styles.featureBullet}>✓</Text>
-            <Text style={styles.featureText}>Participate in verified civic missions</Text>
+            <Text style={styles.featureText}>Report environmental hazards & illegal dumping</Text>
           </View>
           <View style={styles.featureItem}>
             <Text style={styles.featureBullet}>✓</Text>

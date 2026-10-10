@@ -42,8 +42,7 @@ export default function ResidentLayout() {
       <Tabs.Screen
         name="missions"
         options={{
-          title: 'Missions',
-          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 18 }}>🎯</Text>,
+          href: null,
         }}
       />
       <Tabs.Screen
