@@ -38,7 +38,7 @@ export class ScoringAgent {
 
   constructor() {
     this.apiKey = process.env.GEMINI_API_KEY || '';
-    this.modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
+    this.modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
     if (this.apiKey) {
       this.client = new GoogleGenAI({ apiKey: this.apiKey });
     }

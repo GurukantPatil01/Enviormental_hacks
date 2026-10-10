@@ -219,14 +219,14 @@ export const geminiVisionAnalysisSchema = z.object({
   ]),
   secondaryCategories: z.array(z.string()).default([]),
   visibleSeverity: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']),
-  estimatedVolume: z.string().min(1),
+  estimatedVolume: z.string().default('None visible').transform((v) => v.trim() || 'None visible'),
   potentialObstruction: z.enum(['NONE', 'SIDEWALK', 'STORM_DRAIN', 'ROADWAY', 'MULTIPLE']),
   environmentalRiskIndicators: z.array(z.string()).default([]),
   evidenceQuality: z.enum(['HIGH', 'MEDIUM', 'LOW', 'BLURRY_UNREADABLE']),
-  limitations: z.string(),
+  limitations: z.string().default('None specified'),
   requiresHumanReview: z.boolean(),
-  description: z.string().min(1),
-  recommendedAction: z.string().min(1),
+  description: z.string().default('Environmental observation recorded').transform((v) => v.trim() || 'Environmental observation recorded'),
+  recommendedAction: z.string().default('Review by sanitation team').transform((v) => v.trim() || 'Review by sanitation team'),
   detectedObjects: z.array(z.string()).default([]),
 });
 

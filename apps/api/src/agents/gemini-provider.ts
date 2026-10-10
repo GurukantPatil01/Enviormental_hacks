@@ -30,7 +30,7 @@ export class GeminiVisionProvider implements VisionAIProvider {
     this.modelName =
       options?.model ||
       process.env.GEMINI_MODEL ||
-      'gemini-2.5-flash-lite';
+      'gemini-2.5-flash';
     this.timeoutMs = options?.timeoutMs || 25000;
     this.maxRetries = options?.maxRetries ?? 2;
     this.mockClient = options?.mockClient || null;
