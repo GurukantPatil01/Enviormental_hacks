@@ -292,4 +292,13 @@ export const scoringAnalysisSchema = z.object({
 
 export type ScoringAnalysis = z.infer<typeof scoringAnalysisSchema>;
 
+// ==========================================
+// Leaderboard Validation
+// ==========================================
+export const getLeaderboardQuerySchema = z.object({
+  period: z.enum(['monthly', 'all_time']).default('monthly'),
+  communityId: z.string().uuid().optional(),
+  limit: z.coerce.number().int().positive().max(100).default(50),
+});
 
+export type GetLeaderboardQuery = z.infer<typeof getLeaderboardQuerySchema>;

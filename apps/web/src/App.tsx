@@ -9,6 +9,7 @@ import { PatternSearch } from './pages/PatternSearch';
 import { AICommandCenter } from './pages/AICommandCenter';
 import { InterventionCenter } from './pages/InterventionCenter';
 import { ImpactAnalytics } from './pages/ImpactAnalytics';
+import { LeaderboardPage } from './pages/LeaderboardPage';
 import { SystemStatus } from './pages/SystemStatus';
 import { SettingsPage } from './pages/SettingsPage';
 
@@ -25,6 +26,7 @@ export const App: React.FC = () => {
         <Route path="/operations/ai" element={<AICommandCenter />} />
         <Route path="/operations/interventions" element={<InterventionCenter />} />
         <Route path="/operations/impact" element={<ImpactAnalytics />} />
+        <Route path="/operations/leaderboard" element={<LeaderboardPage />} />
         <Route path="/operations/status" element={<SystemStatus />} />
         <Route path="/operations/settings" element={<SettingsPage />} />
       </Route>

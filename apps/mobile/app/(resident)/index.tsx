@@ -133,6 +133,30 @@ export default function HomeScreen() {
           <Text style={styles.reportActionChevron}>→</Text>
         </TouchableOpacity>
 
+        {/* Monthly Leaderboard Banner */}
+        <TouchableOpacity
+          style={styles.leaderboardBanner}
+          onPress={() => router.push('/(resident)/leaderboard')}
+          activeOpacity={0.85}
+        >
+          <View style={styles.leaderboardBannerLeft}>
+            <View style={styles.leaderboardIconWrap}>
+              <Text style={styles.leaderboardIcon}>🏆</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={styles.leaderboardBadgeRow}>
+                <Text style={styles.leaderboardBadge}>MONTHLY CYCLE</Text>
+                <Text style={styles.leaderboardSubBadge}>Refreshes 1st of month</Text>
+              </View>
+              <Text style={styles.leaderboardTitle}>Civic Impact Leaderboard</Text>
+              <Text style={styles.leaderboardDesc}>
+                View real-time monthly rankings & community champion standings
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.leaderboardChevron}>→</Text>
+        </TouchableOpacity>
+
         {/* Community Progress Card */}
         <View style={styles.sectionCard}>
 
@@ -531,6 +555,73 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: colors.primary[700],
+  },
+  leaderboardBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F0FDF4',
+    borderRadius: radius.lg,
+    padding: spacing.base,
+    marginBottom: spacing.base,
+    borderWidth: 1.5,
+    borderColor: '#10B981',
+    shadowColor: '#059669',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  leaderboardBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    marginRight: 8,
+  },
+  leaderboardIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#DCFCE7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  leaderboardIcon: {
+    fontSize: 22,
+  },
+  leaderboardBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 2,
+  },
+  leaderboardBadge: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#059669',
+    letterSpacing: 0.5,
+  },
+  leaderboardSubBadge: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: '#D97706',
+  },
+  leaderboardTitle: {
+    ...typography.bodyBold,
+    color: colors.neutral[900],
+    fontSize: 14,
+  },
+  leaderboardDesc: {
+    fontSize: 11,
+    color: colors.neutral[600],
+    marginTop: 2,
+    lineHeight: 15,
+  },
+  leaderboardChevron: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#059669',
   },
 });
 

@@ -258,7 +258,7 @@ export async function seedEnvironmentalDemo() {
       priority: 'medium',
       status: 'approved',
       assignedTeam: 'Swargate Zone Logistics',
-      notes: '[DEMO-SEED] Approved by Supervisor Patil. Scheduled for vehicle allocation.',
+      notes: '[DEMO-SEED] Approved by Gurukant Patil. Scheduled for vehicle allocation.',
       createdAt: new Date(Date.now() - 1 * 86400000),
     },
   ]).onConflictDoNothing();

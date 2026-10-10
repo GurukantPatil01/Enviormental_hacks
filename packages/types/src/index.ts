@@ -1004,4 +1004,44 @@ export interface ScoringAnalysis {
   };
 }
 
+// ==========================================
+// Monthly Leaderboard & Civic Rankings
+// ==========================================
+export type LeaderboardPeriod = 'monthly' | 'all_time';
+
+export type LeaderboardTier =
+  | 'Eco Champion'
+  | 'Green Guardian'
+  | 'Civic Steward'
+  | 'Eco Pioneer'
+  | 'Active Resident';
+
+export interface LeaderboardEntry {
+  rank: number;
+  userId: string;
+  name: string;
+  avatarUrl: string;
+  communityName?: string | null;
+  communityId?: string | null;
+  monthlyPoints: number;
+  totalPoints: number;
+  verifiedActionsCount: number;
+  streak: number;
+  tier: LeaderboardTier;
+  isCurrentUser?: boolean;
+}
+
+export interface LeaderboardResponse {
+  period: LeaderboardPeriod;
+  month: string;
+  year: number;
+  monthIndex: number;
+  daysRemaining: number;
+  nextResetDate: string;
+  totalParticipants: number;
+  totalPointsAwardedThisMonth: number;
+  entries: LeaderboardEntry[];
+  currentUserEntry?: LeaderboardEntry | null;
+}
+
 

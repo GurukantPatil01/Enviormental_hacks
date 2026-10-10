@@ -12,6 +12,9 @@ import type {
   Evidence,
   HomeDashboardData,
   HumanReview,
+  LeaderboardEntry,
+  LeaderboardPeriod,
+  LeaderboardResponse,
   MapOverview,
   Mission,
   MissionCompleteResponse,
@@ -406,6 +409,18 @@ export class EcoPulseClient {
     },
     getMyClaims: (): Promise<RewardClaim[]> => {
       return this.request<RewardClaim[]>('/rewards/my-claims');
+    },
+  };
+
+  // Monthly Leaderboard & Civic Rankings
+  public readonly leaderboard = {
+    get: (params?: { period?: LeaderboardPeriod; communityId?: string; limit?: number }): Promise<LeaderboardResponse> => {
+      const q = new URLSearchParams();
+      if (params?.period) q.set('period', params.period);
+      if (params?.communityId) q.set('communityId', params.communityId);
+      if (params?.limit) q.set('limit', params.limit.toString());
+      const queryStr = q.toString() ? `?${q.toString()}` : '';
+      return this.request<LeaderboardResponse>(`/leaderboard${queryStr}`);
     },
   };
 }

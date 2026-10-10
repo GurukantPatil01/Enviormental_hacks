@@ -4,7 +4,7 @@ import { Settings, Save, ShieldCheck, MapPin, User, Bell } from 'lucide-react';
 export const SettingsPage: React.FC = () => {
   const [municipality, setMunicipality] = useState('Pune Municipal Corporation (PMC)');
   const [ward, setWard] = useState('Ward 14 - Kothrud / Bavdhan');
-  const [maintainerName, setMaintainerName] = useState('Supervisor Patil');
+  const [maintainerName, setMaintainerName] = useState('Gurukant Patil');
   const [badgeNumber, setBadgeNumber] = useState('PMC-ENV-8841');
   const [saved, setSaved] = useState(false);
 

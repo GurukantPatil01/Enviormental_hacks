@@ -34,6 +34,13 @@ export default function ResidentLayout() {
         }}
       />
       <Tabs.Screen
+        name="leaderboard"
+        options={{
+          title: 'Rankings',
+          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 18 }}>🏆</Text>,
+        }}
+      />
+      <Tabs.Screen
         name="map"
         options={{
           href: null,

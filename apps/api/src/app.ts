@@ -15,6 +15,7 @@ import { taskRoutes } from './routes/task.routes.js';
 import { intelligenceRoutes } from './routes/intelligence.routes.js';
 import { agentRoutes } from './routes/agent.routes.js';
 import { interventionRoutes } from './routes/intervention.routes.js';
+import { leaderboardRoutes } from './routes/leaderboard.routes.js';
 import { pool } from './db/index.js';
 
 export function buildApp() {
@@ -93,6 +94,7 @@ export function buildApp() {
   app.register(intelligenceRoutes);
   app.register(agentRoutes);
   app.register(interventionRoutes);
+  app.register(leaderboardRoutes);
 
 
   // Uniform fallback error handler

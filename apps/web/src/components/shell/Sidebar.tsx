@@ -13,6 +13,7 @@ import {
   Settings,
   UserCheck,
   Leaf,
+  Trophy,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -24,6 +25,7 @@ const NAV_ITEMS = [
   { path: '/operations/ai', label: 'AI Command', icon: Bot },
   { path: '/operations/interventions', label: 'Interventions', icon: ShieldAlert },
   { path: '/operations/impact', label: 'Impact', icon: TrendingUp },
+  { path: '/operations/leaderboard', label: 'Civic Leaderboard', icon: Trophy },
 ];
 
 export const Sidebar: React.FC = () => {
@@ -63,10 +65,9 @@ export const Sidebar: React.FC = () => {
                 to={item.path}
                 end={item.path === '/operations'}
                 className={({ isActive }) =>
-                  `flex items-center space-x-2.5 px-3 py-2 rounded-md text-xs font-medium transition-all ${
-                    isActive
-                      ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60 border border-transparent'
+                  `flex items-center space-x-2.5 px-3 py-2 rounded-md text-xs font-medium transition-all ${isActive
+                    ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60 border border-transparent'
                   }`
                 }
               >
@@ -102,7 +103,7 @@ export const Sidebar: React.FC = () => {
               <UserCheck className="w-3.5 h-3.5" />
             </div>
             <div className="truncate">
-              <div className="text-xs font-medium text-slate-200 truncate">Supervisor Patil</div>
+              <div className="text-xs font-medium text-slate-200 truncate">Gurukant Patil</div>
               <div className="text-[10px] text-slate-400 font-mono truncate">Zone 3 • PMC Pune</div>
             </div>
           </div>
