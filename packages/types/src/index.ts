@@ -375,7 +375,7 @@ export type ReportStatus =
   | 'CLOSED';
 
 export interface ReportAIFindings {
-  wasteDetected: boolean;
+  wasteDetected: boolean | 'uncertain';
   wasteType?: string | null;
   secondaryWasteTypes?: string[] | null;
   severity?: ObservationSeverity | null;
@@ -834,7 +834,7 @@ export interface AIObservation {
 }
 
 export interface GeminiVisionAnalysis {
-  wasteDetected: boolean;
+  wasteDetected: boolean | 'uncertain';
   wastePresence: 'NONE' | 'LOW' | 'MODERATE' | 'SIGNIFICANT' | 'OVERWHELMING';
   wasteCategory:
     | 'WASTE_HOTSPOT'
@@ -847,13 +847,15 @@ export interface GeminiVisionAnalysis {
     | 'OTHER';
   secondaryCategories: string[];
   visibleSeverity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  confidence?: number;
   estimatedVolume: string;
   potentialObstruction: 'NONE' | 'SIDEWALK' | 'STORM_DRAIN' | 'ROADWAY' | 'MULTIPLE';
   environmentalRiskIndicators: string[];
-  evidenceQuality: 'HIGH' | 'MEDIUM' | 'LOW' | 'BLURRY_UNREADABLE';
+  evidenceQuality: 'HIGH' | 'MEDIUM' | 'LOW' | 'BLURRY_UNREADABLE' | 'INCONCLUSIVE' | 'POOR';
   limitations: string;
   requiresHumanReview: boolean;
   description: string;
+  explanation?: string;
   recommendedAction: string;
   detectedObjects: string[];
 }

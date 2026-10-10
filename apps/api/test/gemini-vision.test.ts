@@ -36,6 +36,7 @@ describe('EcoPulse: Gemini Vision AI Integration & Pipeline Tests', () => {
     wasteCategory: 'ILLEGAL_DUMPING' as const,
     secondaryCategories: ['PLASTIC_PACKAGING'],
     visibleSeverity: 'HIGH' as const,
+    confidence: 0.94,
     estimatedVolume: 'Medium dump pile (approx 5-10 bags)',
     potentialObstruction: 'STORM_DRAIN' as const,
     environmentalRiskIndicators: ['WATER_SOURCE_PROXIMITY', 'DRAINAGE_BLOCK'],
@@ -43,6 +44,7 @@ describe('EcoPulse: Gemini Vision AI Integration & Pipeline Tests', () => {
     limitations: 'Clear day lighting, unoccluded view',
     requiresHumanReview: false,
     description: 'Substantial plastic debris clogging stormwater inlet.',
+    explanation: 'Substantial plastic debris clogging stormwater inlet.',
     recommendedAction: 'Immediate drainage clearance required to prevent flooding.',
     detectedObjects: ['plastic bottle', 'polyethylene bag'],
   };
@@ -122,9 +124,27 @@ describe('EcoPulse: Gemini Vision AI Integration & Pipeline Tests', () => {
     const parseResult = geminiVisionAnalysisSchema.safeParse(validGeminiOutput);
     expect(parseResult.success).toBe(true);
     if (parseResult.success) {
+      expect(parseResult.data.wasteDetected).toBe(true);
       expect(parseResult.data.wasteCategory).toBe('ILLEGAL_DUMPING');
       expect(parseResult.data.visibleSeverity).toBe('HIGH');
       expect(parseResult.data.potentialObstruction).toBe('STORM_DRAIN');
+      expect(parseResult.data.explanation).toBeDefined();
+    }
+  });
+
+  it('1b. should support uncertain waste detection for ambiguous or blurry evidence', () => {
+    const uncertainOutput = {
+      ...validGeminiOutput,
+      wasteDetected: 'uncertain' as const,
+      evidenceQuality: 'BLURRY_UNREADABLE' as const,
+      requiresHumanReview: true,
+      explanation: 'Image is too dark and blurry to definitively classify waste.',
+    };
+    const parseResult = geminiVisionAnalysisSchema.safeParse(uncertainOutput);
+    expect(parseResult.success).toBe(true);
+    if (parseResult.success) {
+      expect(parseResult.data.wasteDetected).toBe('uncertain');
+      expect(parseResult.data.requiresHumanReview).toBe(true);
     }
   });
 
@@ -159,7 +179,7 @@ describe('EcoPulse: Gemini Vision AI Integration & Pipeline Tests', () => {
   it('4. should send image bytes to Gemini and parse structured analysis', async () => {
     const provider = new GeminiVisionProvider({
       apiKey: 'test-fake-gemini-key',
-      model: 'gemini-2.5-flash-lite',
+      model: 'gemini-3.8-flash',
     });
 
     mockGenerateContent.mockResolvedValueOnce({
@@ -174,9 +194,13 @@ describe('EcoPulse: Gemini Vision AI Integration & Pipeline Tests', () => {
     });
 
     expect(result.provider).toBe('GEMINI');
-    expect(result.model).toBe('gemini-2.5-flash-lite');
+    expect(result.model).toBe('gemini-3.8-flash');
+    expect(result.wasteDetected).toBe(true);
     expect(result.wasteType).toBe('ILLEGAL_DUMPING');
     expect(result.severity).toBe('HIGH');
+    expect(result.confidence).toBe(0.94);
+    expect(result.potentialObstruction).toBe('STORM_DRAIN');
+    expect(result.explanation).toContain('Substantial plastic debris');
     expect(result.geminiAnalysis).toBeDefined();
     expect(result.geminiAnalysis?.requiresHumanReview).toBe(false);
   });

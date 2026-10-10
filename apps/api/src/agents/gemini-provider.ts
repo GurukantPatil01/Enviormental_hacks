@@ -1,4 +1,5 @@
 import path from 'node:path';
+import fs from 'node:fs';
 import { GoogleGenAI } from '@google/genai';
 import type { ObservationSeverity, VisionObservation, VisionWasteCategory } from '@ecopulse/types';
 import { geminiVisionAnalysisSchema, type GeminiVisionAnalysis } from '@ecopulse/validation';
@@ -30,7 +31,7 @@ export class GeminiVisionProvider implements VisionAIProvider {
     this.modelName =
       options?.model ||
       process.env.GEMINI_MODEL ||
-      'gemini-2.5-flash';
+      'gemini-3.8-flash';
     this.timeoutMs = options?.timeoutMs || 25000;
     this.maxRetries = options?.maxRetries ?? 2;
     this.mockClient = options?.mockClient || null;
@@ -107,6 +108,13 @@ export class GeminiVisionProvider implements VisionAIProvider {
     }
 
     // 3. Normalize path for storageService
+    if (fs.existsSync(storageKey)) {
+      const buffer = fs.readFileSync(storageKey);
+      const ext = path.extname(storageKey).toLowerCase();
+      const mimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+      return this.validateImage(buffer, mimeType);
+    }
+
     if (storageKey.startsWith('/uploads/')) {
       storageKey = storageKey.replace(/^\/uploads\//, '');
     } else if (storageKey.startsWith('uploads/')) {
@@ -170,22 +178,28 @@ Reported category hint: ${input.categoryHint || 'None provided'}.
 CRITICAL RULES:
 1. Strictly report only what is visibly present in the image.
 2. DO NOT fabricate coordinates, exact weight, responsible individuals, civic citations, or cleanup costs that cannot be directly proven from the photo.
-3. If the image is blurry, dark, unreadable, or ambiguous, you MUST set evidenceQuality to "LOW" or "BLURRY_UNREADABLE" and set requiresHumanReview to true.
-4. If no solid waste is visible, set wasteDetected to false, wasteCategory to "NO_CLEAR_ISSUE", visibleSeverity to "LOW", and wastePresence to "NONE".
-5. Return your output strictly as a JSON object matching this structure:
+3. If the image is blurry, dark, unreadable, obscured, poor quality, or ambiguous, you MUST set evidenceQuality to "LOW", "BLURRY_UNREADABLE", "POOR", or "INCONCLUSIVE", set wasteDetected to "uncertain", set requiresHumanReview to true, and explain the limitation.
+4. If the image shows a clean area (e.g. clean street, clean park, tidy room, computer/phone screen capture without actual outdoor waste), set wasteDetected to false, wasteCategory to "NO_CLEAR_ISSUE", visibleSeverity to "LOW", and wastePresence to "NONE".
+5. If solid waste is clearly visible, set wasteDetected to true, and classify wasteCategory and visibleSeverity accurately.
+6. Provide an honest, non-fabricated confidence score between 0.0 and 1.0 reflecting how clear and unambiguous the visual evidence is. If the image is unclear, blurry, or obscured, confidence must be low (<0.70) and requiresHumanReview must be true. Do NOT invent high confidence scores.
+7. Set potentialObstruction to "SIDEWALK", "STORM_DRAIN", "ROADWAY", "MULTIPLE", or "NONE" if waste is blocking public right-of-way.
+8. Provide a clear, factual explanation describing the visual rationale for your classification.
+9. Return your output strictly as a JSON object matching this structure:
 {
-  "wasteDetected": boolean,
+  "wasteDetected": boolean or "uncertain",
   "wastePresence": "NONE" | "LOW" | "MODERATE" | "SIGNIFICANT" | "OVERWHELMING",
   "wasteCategory": "WASTE_HOTSPOT" | "ILLEGAL_DUMPING" | "OVERFLOWING_BIN" | "MISSED_COLLECTION" | "MIXED_WASTE" | "CONSTRUCTION_DEBRIS" | "NO_CLEAR_ISSUE" | "OTHER",
   "secondaryCategories": string[],
   "visibleSeverity": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
+  "confidence": number,
   "estimatedVolume": string,
   "potentialObstruction": "NONE" | "SIDEWALK" | "STORM_DRAIN" | "ROADWAY" | "MULTIPLE",
   "environmentalRiskIndicators": string[],
-  "evidenceQuality": "HIGH" | "MEDIUM" | "LOW" | "BLURRY_UNREADABLE",
+  "evidenceQuality": "HIGH" | "MEDIUM" | "LOW" | "BLURRY_UNREADABLE" | "INCONCLUSIVE" | "POOR",
   "limitations": string,
   "requiresHumanReview": boolean,
   "description": string,
+  "explanation": string,
   "recommendedAction": string,
   "detectedObjects": string[]
 }
@@ -197,15 +211,31 @@ CRITICAL RULES:
     // 4. Validate output with strict Zod schema
     const validated = geminiVisionAnalysisSchema.parse(rawAnalysis);
 
-    // 5. Calculate non-calibrated heuristic confidence score (bounded 0.60 to 0.95)
-    let confidence = 0.85;
-    if (validated.evidenceQuality === 'HIGH') confidence = 0.94;
-    else if (validated.evidenceQuality === 'MEDIUM') confidence = 0.82;
-    else confidence = 0.65;
+    // 5. Calculate non-fabricated confidence score
+    let confidence = typeof validated.confidence === 'number'
+      ? Math.max(0, Math.min(1, validated.confidence))
+      : validated.evidenceQuality === 'HIGH'
+      ? 0.94
+      : validated.evidenceQuality === 'MEDIUM'
+      ? 0.80
+      : 0.55;
 
-    if (validated.requiresHumanReview) {
-      confidence = Math.min(confidence, 0.72);
+    const isUncertain =
+      validated.wasteDetected === 'uncertain' ||
+      validated.evidenceQuality === 'BLURRY_UNREADABLE' ||
+      validated.evidenceQuality === 'INCONCLUSIVE' ||
+      validated.evidenceQuality === 'POOR';
+
+    const requiresHumanReview = Boolean(validated.requiresHumanReview || isUncertain);
+
+    if (isUncertain) {
+      confidence = Math.min(confidence, 0.65);
     }
+
+    const explanation =
+      validated.explanation ||
+      validated.description ||
+      'Environmental observation recorded.';
 
     return {
       wasteType: validated.wasteCategory,
@@ -219,15 +249,29 @@ CRITICAL RULES:
           ? `Obstruction to ${validated.potentialObstruction.toLowerCase()}`
           : 'No immediate safety obstruction',
       illegalDumpingLikelihood:
-        validated.wasteCategory === 'ILLEGAL_DUMPING' ? 0.9 : validated.wasteDetected ? 0.2 : 0.0,
+        validated.wasteCategory === 'ILLEGAL_DUMPING'
+          ? 0.9
+          : validated.wasteDetected === true
+          ? 0.2
+          : 0.0,
       description: validated.description,
+      explanation,
       recommendedAction: validated.recommendedAction,
       detectedObjects: validated.detectedObjects,
       model: this.modelName,
       provider: 'GEMINI',
+      wasteDetected: validated.wasteDetected,
+      wasteCategory: validated.wasteCategory,
+      visibleSeverity: validated.visibleSeverity,
+      potentialObstruction: validated.potentialObstruction,
+      requiresHumanReview,
       // Attach full raw metadata for inspector
       ...( {
-        geminiAnalysis: validated,
+        geminiAnalysis: {
+          ...validated,
+          explanation,
+          requiresHumanReview,
+        },
       } as any),
     };
   }
@@ -334,6 +378,12 @@ CRITICAL RULES:
       provider: 'GEMINI' as any,
       processingDurationMs: duration,
       createdAt: new Date().toISOString(),
+      wasteDetected: res.wasteDetected,
+      wasteCategory: res.wasteCategory,
+      visibleSeverity: res.visibleSeverity,
+      potentialObstruction: res.potentialObstruction,
+      requiresHumanReview: res.requiresHumanReview,
+      explanation: res.explanation,
       ...({
         geminiAnalysis: (res as any).geminiAnalysis,
       } as any),

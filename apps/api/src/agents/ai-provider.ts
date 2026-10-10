@@ -23,10 +23,16 @@ export interface EnvironmentalObservationResult {
   publicSafetyRisk?: string;
   illegalDumpingLikelihood?: number;
   description: string;
+  explanation?: string;
   recommendedAction: string;
   detectedObjects: string[];
   model: string;
   provider: string;
+  wasteDetected?: boolean | 'uncertain';
+  wasteCategory?: string;
+  visibleSeverity?: ObservationSeverity;
+  potentialObstruction?: string;
+  requiresHumanReview?: boolean;
 }
 
 export interface VisionAIProvider {

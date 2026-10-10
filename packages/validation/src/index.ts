@@ -244,18 +244,20 @@ export const visionQualityEnum = z.enum([
 ]);
 
 export const geminiVisionAnalysisSchema = z.object({
-  wasteDetected: z.boolean(),
-  wastePresence: visionPresenceEnum,
+  wasteDetected: z.union([z.boolean(), z.literal('uncertain')]),
+  wastePresence: visionPresenceEnum.default('NONE'),
   wasteCategory: visionWasteCategoryEnum,
   secondaryCategories: z.array(z.string()).default([]),
   visibleSeverity: visionSeverityEnum,
+  confidence: z.number().min(0).max(1).optional(),
   estimatedVolume: z.string().default('None visible').transform((v) => v.trim() || 'None visible'),
   potentialObstruction: visionObstructionEnum,
   environmentalRiskIndicators: z.array(z.string()).default([]),
-  evidenceQuality: visionQualityEnum,
+  evidenceQuality: visionQualityEnum.default('MEDIUM'),
   limitations: z.string().default('None specified'),
   requiresHumanReview: z.boolean(),
   description: z.string().default('Environmental observation recorded').transform((v) => v.trim() || 'Environmental observation recorded'),
+  explanation: z.string().optional(),
   observations: z.string().optional(),
   recommendedAction: z.string().default('Review by sanitation team').transform((v) => v.trim() || 'Review by sanitation team'),
   detectedObjects: z.array(z.string()).default([]),
