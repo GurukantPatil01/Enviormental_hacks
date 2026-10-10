@@ -88,11 +88,14 @@ export class ReportRepository {
 
       if (aiObs) {
         const rawMeta = aiObs.rawMetadata as any;
-        const gemini = rawMeta?.geminiAnalysis;
+        const visionData =
+          rawMeta?.bedrockAnalysis ||
+          rawMeta?.visionAnalysis ||
+          rawMeta?.geminiAnalysis;
         const wasteDetected =
-          gemini?.wasteDetected !== undefined
-            ? Boolean(gemini.wasteDetected)
-            : aiObs.wasteType !== 'NO_WASTE';
+          visionData?.wasteDetected !== undefined
+            ? Boolean(visionData.wasteDetected)
+            : aiObs.wasteType !== 'NO_WASTE' && aiObs.wasteType !== 'NO_CLEAR_ISSUE';
 
         aiFindings = {
           wasteDetected,
@@ -109,11 +112,12 @@ export class ReportRepository {
           modelProvider: aiObs.modelProvider,
           modelName: aiObs.modelName,
           requiresHumanReview: Boolean(
-            gemini?.requiresHumanReview || envEvent.status === 'REVIEW_REQUIRED'
+            visionData?.requiresHumanReview || envEvent.status === 'REVIEW_REQUIRED'
           ),
           explanation:
-            gemini?.reasoning ||
-            gemini?.recommendedAction ||
+            visionData?.reasoning ||
+            visionData?.description ||
+            visionData?.recommendedAction ||
             aiObs.environmentalRisk ||
             null,
         };

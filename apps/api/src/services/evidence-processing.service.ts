@@ -119,12 +119,16 @@ export class EvidenceProcessingService {
           if (events.length > 0) {
             const event = events[0];
             const eventSeverity = observation.severity || 'MEDIUM';
-            const geminiData = (observation as any).geminiAnalysis;
+            const visionData =
+              (observation as any).bedrockAnalysis ||
+              (observation as any).geminiAnalysis ||
+              (observation as any).visionAnalysis;
             const scoringAnalysis = (recommendation as any)?.scoringAnalysis;
 
             // Flag for human review if ambiguous or poor quality
             const needsHumanReview =
-              Boolean(geminiData?.requiresHumanReview) ||
+              Boolean(visionData?.requiresHumanReview) ||
+              Boolean((observation as any)?.requiresHumanReview) ||
               Boolean(scoringAnalysis?.requiresHumanReview);
             const eventStatus = needsHumanReview ? 'REVIEW_REQUIRED' : 'ANALYZED';
 
@@ -155,17 +159,17 @@ export class EvidenceProcessingService {
               confidence: observation.confidence ?? 0.85,
               estimatedVolume:
                 dumpingAnalysis?.estimatedVolumeCategory ||
-                geminiData?.estimatedVolume ||
+                visionData?.estimatedVolume ||
                 (observation as any).estimatedVolume ||
                 'Moderate visible volume',
               environmentalRisk:
-                geminiData?.environmentalRiskIndicators?.join(', ') ||
+                visionData?.environmentalRiskIndicators?.join(', ') ||
                 recommendation?.reason ||
                 observation.observations ||
                 'Environmental contamination risk',
               publicSafetyRisk:
-                geminiData?.potentialObstruction && geminiData.potentialObstruction !== 'NONE'
-                  ? `Obstruction risk: ${geminiData.potentialObstruction}`
+                visionData?.potentialObstruction && visionData.potentialObstruction !== 'NONE'
+                  ? `Obstruction risk: ${visionData.potentialObstruction}`
                   : eventSeverity === 'CRITICAL' || eventSeverity === 'HIGH'
                   ? 'High public safety hazard'
                   : 'Moderate public safety concern',
@@ -173,13 +177,15 @@ export class EvidenceProcessingService {
                 dumpingAnalysis?.dumpingLikelihood ?? (observation.category === 'ILLEGAL_DUMPING' ? 0.9 : 0.2),
               recommendedAction:
                 dumpingAnalysis?.deterrenceStrategy ||
-                geminiData?.recommendedAction ||
+                visionData?.recommendedAction ||
                 recommendation?.reason ||
                 'Schedule site inspection and cleanup',
               rawMetadata: {
                 observation,
                 recommendation,
-                geminiAnalysis: geminiData,
+                visionAnalysis: visionData,
+                bedrockAnalysis: (observation as any).bedrockAnalysis,
+                geminiAnalysis: (observation as any).geminiAnalysis || visionData,
                 dumpingAnalysis,
                 scoringAnalysis,
               } as any,

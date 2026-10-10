@@ -174,7 +174,8 @@ export default function ReportDetailsScreen() {
   // AI findings from authoritative backend (aiFindings or aiObservation)
   const aiFindings = (report as any).aiFindings || (report as any).aiObservation?.findings;
   const isWasteDetected = aiFindings ? aiFindings.wasteDetected === true : report.status === 'ANALYZED';
-  const aiConfidence = aiFindings?.confidenceScore ? `${Math.round(aiFindings.confidenceScore * 100)}%` : null;
+  const confVal = aiFindings?.confidenceScore ?? aiFindings?.confidence;
+  const aiConfidence = typeof confVal === 'number' ? `${Math.round(confVal * 100)}%` : null;
 
   // Coordinates
   const coords = (report.locationGeoJson as any)?.coordinates;

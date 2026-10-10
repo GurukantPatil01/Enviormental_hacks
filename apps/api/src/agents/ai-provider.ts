@@ -181,60 +181,12 @@ export class LocalVisionProvider extends MockVisionProvider {
   }
 }
 
-/**
- * Amazon Bedrock Vision Provider utilizing AWS SDK v3.
- * Invokes Claude 3 / Titan multimodal foundation models when AWS credentials exist.
- * Automatically falls back to deterministic MockVisionProvider when credentials are unset.
- */
-export class BedrockVisionProvider extends MockVisionProvider {
-  private client: BedrockRuntimeClient | null = null;
-  private region: string;
-
-  constructor(region?: string, modelName?: string) {
-    const model = modelName || process.env.AWS_BEDROCK_MODEL || 'anthropic.claude-3-haiku-20240307-v1:0';
-    super(model);
-    this.region = region || process.env.AWS_REGION || 'ap-south-1';
-
-    if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
-      this.client = new BedrockRuntimeClient({ region: this.region });
-    }
-  }
-
-  getProviderName(): string {
-    return 'BEDROCK';
-  }
-
-  async analyzeEnvironmentalEvidence(input: VisionAnalysisInput): Promise<EnvironmentalObservationResult> {
-    if (!this.client) {
-      console.warn(
-        `[BedrockVisionProvider] No AWS Bedrock credentials found. Gracefully using mock fallback.`
-      );
-      return super.analyzeEnvironmentalEvidence(input);
-    }
-
-    try {
-      console.log(`[BedrockVisionProvider] Invoking Amazon Bedrock model ${this.modelName} in ${this.region}`);
-      // In live production with Bedrock access, invoke model:
-      // const command = new InvokeModelCommand({ modelId: this.modelName, body: ... });
-      // const response = await this.client.send(command);
-      // For resilience and zero-cost guarantee in dev/testing, return verified observation
-      const res = await super.analyzeEnvironmentalEvidence(input);
-      return {
-        ...res,
-        provider: 'BEDROCK',
-        model: this.modelName,
-      };
-    } catch (err) {
-      console.warn(`[BedrockVisionProvider] Bedrock invocation error, delegating to fallback:`, err);
-      return super.analyzeEnvironmentalEvidence(input);
-    }
-  }
-}
-
+import { BedrockVisionProvider, type BedrockVisionOptions } from './bedrock-provider.js';
 import { GeminiVisionProvider } from './gemini-provider.js';
 
 // Backward-compatible alias for existing code & tests
-export { GeminiVisionProvider };
+export { BedrockVisionProvider, GeminiVisionProvider };
+export type { BedrockVisionOptions };
 export const MockAIProvider = MockVisionProvider;
 export const BedrockAIProvider = BedrockVisionProvider;
 export type IAIProvider = VisionAIProvider;
@@ -257,7 +209,14 @@ export function getAIProvider(): VisionAIProvider {
     return gemini;
   }
   if (provider === 'bedrock') {
-    return new BedrockVisionProvider();
+    const bedrock = new BedrockVisionProvider();
+    if (!bedrock.hasCredentials() && process.env.NODE_ENV !== 'production') {
+      console.warn(
+        '[AIProvider] VISION_PROVIDER=bedrock but AWS credentials are not set. Using MockVisionProvider fallback in non-production.'
+      );
+      return new MockVisionProvider();
+    }
+    return bedrock;
   }
   if (provider === 'local') {
     return new LocalVisionProvider();

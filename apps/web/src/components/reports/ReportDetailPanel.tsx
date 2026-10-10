@@ -94,7 +94,12 @@ export const ReportDetailPanel: React.FC<ReportDetailPanelProps> = ({
     eventDetails?.observation;
 
   const rawMeta = observation?.rawMetadata || observation?.raw_metadata;
-  const geminiData = rawMeta?.geminiAnalysis || (observation as any)?.geminiAnalysis;
+  const geminiData =
+    rawMeta?.bedrockAnalysis ||
+    rawMeta?.visionAnalysis ||
+    rawMeta?.geminiAnalysis ||
+    (observation as any)?.geminiAnalysis ||
+    (observation as any)?.bedrockAnalysis;
   const dumpingAnalysis = rawMeta?.dumpingAnalysis || (observation as any)?.dumpingAnalysis;
   const scoringAnalysis = rawMeta?.scoringAnalysis || (observation as any)?.scoringAnalysis;
   const eventStatus = (eventDetails as any)?.event?.status || report.status || currentStatus;
@@ -102,12 +107,12 @@ export const ReportDetailPanel: React.FC<ReportDetailPanelProps> = ({
   const modelProvider =
     observation?.modelProvider ||
     observation?.model_provider ||
-    (geminiData ? 'Google Gemini' : 'Vision AI Engine');
+    (rawMeta?.bedrockAnalysis ? 'AWS Bedrock' : geminiData ? 'Google Gemini' : 'Vision AI Engine');
 
   const modelName =
     observation?.modelName ||
     observation?.model_name ||
-    (geminiData ? 'gemini-2.5-flash-lite' : 'Autonomous Vision Agent');
+    (rawMeta?.bedrockAnalysis ? 'anthropic.claude-3-5-sonnet' : geminiData ? 'gemini-2.5-flash' : 'Autonomous Vision Agent');
 
   // Resolve mediaUrl from report object or fetched event details
   const mediaUrl =

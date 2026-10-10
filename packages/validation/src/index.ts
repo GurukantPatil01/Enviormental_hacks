@@ -202,35 +202,74 @@ export const createInterventionSchema = z.object({
 export type CreateInterventionInput = z.infer<typeof createInterventionSchema>;
 
 // ==========================================
-// Gemini Structured Vision Analysis Validation
+// Gemini & Bedrock Vision Analysis Validation
 // ==========================================
+export const visionWasteCategoryEnum = z.enum([
+  'WASTE_HOTSPOT',
+  'ILLEGAL_DUMPING',
+  'OVERFLOWING_BIN',
+  'MISSED_COLLECTION',
+  'MIXED_WASTE',
+  'CONSTRUCTION_DEBRIS',
+  'NO_CLEAR_ISSUE',
+  'OTHER',
+]);
+
+export const visionPresenceEnum = z.enum([
+  'NONE',
+  'LOW',
+  'MODERATE',
+  'SIGNIFICANT',
+  'OVERWHELMING',
+]);
+
+export const visionSeverityEnum = z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
+
+export const visionObstructionEnum = z.enum([
+  'NONE',
+  'SIDEWALK',
+  'STORM_DRAIN',
+  'ROADWAY',
+  'MULTIPLE',
+]);
+
+export const visionQualityEnum = z.enum([
+  'HIGH',
+  'MEDIUM',
+  'LOW',
+  'BLURRY_UNREADABLE',
+  'USABLE',
+  'POOR',
+  'INCONCLUSIVE',
+]);
+
 export const geminiVisionAnalysisSchema = z.object({
   wasteDetected: z.boolean(),
-  wastePresence: z.enum(['NONE', 'LOW', 'MODERATE', 'SIGNIFICANT', 'OVERWHELMING']),
-  wasteCategory: z.enum([
-    'WASTE_HOTSPOT',
-    'ILLEGAL_DUMPING',
-    'OVERFLOWING_BIN',
-    'MISSED_COLLECTION',
-    'MIXED_WASTE',
-    'CONSTRUCTION_DEBRIS',
-    'NO_CLEAR_ISSUE',
-    'OTHER',
-  ]),
+  wastePresence: visionPresenceEnum,
+  wasteCategory: visionWasteCategoryEnum,
   secondaryCategories: z.array(z.string()).default([]),
-  visibleSeverity: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']),
+  visibleSeverity: visionSeverityEnum,
   estimatedVolume: z.string().default('None visible').transform((v) => v.trim() || 'None visible'),
-  potentialObstruction: z.enum(['NONE', 'SIDEWALK', 'STORM_DRAIN', 'ROADWAY', 'MULTIPLE']),
+  potentialObstruction: visionObstructionEnum,
   environmentalRiskIndicators: z.array(z.string()).default([]),
-  evidenceQuality: z.enum(['HIGH', 'MEDIUM', 'LOW', 'BLURRY_UNREADABLE']),
+  evidenceQuality: visionQualityEnum,
   limitations: z.string().default('None specified'),
   requiresHumanReview: z.boolean(),
   description: z.string().default('Environmental observation recorded').transform((v) => v.trim() || 'Environmental observation recorded'),
+  observations: z.string().optional(),
   recommendedAction: z.string().default('Review by sanitation team').transform((v) => v.trim() || 'Review by sanitation team'),
   detectedObjects: z.array(z.string()).default([]),
 });
 
 export type GeminiVisionAnalysis = z.infer<typeof geminiVisionAnalysisSchema>;
+
+export const bedrockVisionAnalysisSchema = geminiVisionAnalysisSchema.extend({
+  observations: z.string().default('Environmental observation recorded').transform((v) => v.trim() || 'Environmental observation recorded'),
+});
+
+export type BedrockVisionAnalysis = z.infer<typeof bedrockVisionAnalysisSchema>;
+export const wasteVisionObservationSchema = bedrockVisionAnalysisSchema;
+export type WasteVisionObservation = z.infer<typeof wasteVisionObservationSchema>;
 
 // ==========================================
 // Google ADK: Dumping Analysis Agent Validation
