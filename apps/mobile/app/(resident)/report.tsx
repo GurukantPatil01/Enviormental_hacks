@@ -1,5 +1,4 @@
-import { colors, radius, spacing, typography } from '@ecopulse/design-system';
-import type { Report, ReportCategory } from '@ecopulse/types';
+import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
@@ -9,8 +8,8 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   Platform,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -19,23 +18,9 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { API_URL, api } from '../../lib/api';
+import { theme } from '../../constants/theme';
+import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/auth.store';
-
-const CATEGORIES: { label: string; value: ReportCategory; icon: string }[] = [
-  { label: 'Waste Hotspot', value: 'WASTE_HOTSPOT', icon: '🗑️' },
-  { label: 'Illegal Dumping', value: 'ILLEGAL_DUMPING', icon: '⚠️' },
-  { label: 'Overflowing Bin', value: 'OVERFLOWING_BIN', icon: '📦' },
-  { label: 'Missed Collection', value: 'MISSED_COLLECTION', icon: '🚛' },
-  { label: 'Mixed Waste', value: 'MIXED_WASTE', icon: '♻️' },
-  { label: 'Other Issue', value: 'OTHER', icon: '📍' },
-];
-
-const SAMPLE_EVIDENCE_URLS = [
-  'https://images.unsplash.com/photo-1532996122724-e3c354a0b15b?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1611284446314-60a58ac0deb9?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1563245372-f21724e3856d?auto=format&fit=crop&w=800&q=80',
-];
 
 interface GeoLocationState {
   latitude: number;
@@ -49,40 +34,50 @@ export default function ReportScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
-  const [tab, setTab] = useState<'NEW' | 'TRACK'>('NEW');
 
-  // Form state
-  const [category, setCategory] = useState<ReportCategory>('WASTE_HOTSPOT');
-  const [title, setTitle] = useState('Overflowing dry waste bin near Kothrud Stand');
-  const [description, setDescription] = useState(
-    'Commercial dry waste container has been overflowing for 2 days. Plastic bottles and packaging spilled onto sidewalk.'
-  );
-  const [locationAddress, setLocationAddress] = useState('Kothrud Stand, DP Road, Pune');
+  // Form Fields
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState<'WASTE_HOTSPOT' | 'ILLEGAL_DUMPING' | 'OVERFLOWING_BIN' | 'MIXED_WASTE' | 'OTHER'>('WASTE_HOTSPOT');
 
-  // Real-time Photo & GPS state
-  const [evidenceUri, setEvidenceUri] = useState<string>(SAMPLE_EVIDENCE_URLS[0]);
+  // Evidence state
+  const [evidenceUri, setEvidenceUri] = useState<string | null>(null);
   const [evidenceBase64, setEvidenceBase64] = useState<string | null>(null);
-  const [photoTakenAt, setPhotoTakenAt] = useState<string>('Preset Sample');
-  const [isPhotoLive, setIsPhotoLive] = useState<boolean>(false);
+  const [evidenceFileSize, setEvidenceFileSize] = useState<number | null>(null);
 
-  const [locationCoords, setLocationCoords] = useState<GeoLocationState>({
-    latitude: 18.5074,
-    longitude: 73.8183,
-    accuracy: 4.5,
-    timestamp: Date.now(),
-  });
+  // GPS Location state
+  const [locationCoords, setLocationCoords] = useState<GeoLocationState | null>(null);
+  const [locationAddress, setLocationAddress] = useState<string>('');
   const [isLocating, setIsLocating] = useState<boolean>(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
 
-  // Request GPS position and reverse-geocode address
-  const requestLocation = async (silent = false) => {
+  // Submission Progress
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [submitProgressStep, setSubmitProgressStep] = useState<string>('');
+
+  // Fetch Community
+  const { data: communities } = useQuery({
+    queryKey: ['communities'],
+    queryFn: () => api.communities.list(),
+  });
+  const communityId = communities?.[0]?.id || '0090c98a-b152-427a-8d94-951d2bf59894';
+
+  // Automatically acquire GPS location on screen mount
+  useEffect(() => {
+    fetchCurrentLocation(true);
+  }, []);
+
+  const fetchCurrentLocation = async (silent = false) => {
     setIsLocating(true);
+    setLocationError(null);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
+        setLocationError('Foreground location permission denied.');
         if (!silent) {
           Alert.alert(
             'Location Permission Required',
-            'EcoPulse needs device GPS access to verify the exact coordinates where the environmental hazard was photographed.'
+            'EcoPulse needs device GPS access to verify the exact location of the environmental hazard.'
           );
         }
         setIsLocating(false);
@@ -102,10 +97,8 @@ export default function ReportScreen() {
       };
       setLocationCoords(newCoords);
 
-      // Reverse geocode to get a human-readable street address
+      // Reverse geocoding
       let resolvedAddress = false;
-
-      // 1. Try Native Geocoder (iOS / Android with Play Services)
       if (Platform.OS !== 'web') {
         try {
           const addresses = await Location.reverseGeocodeAsync({
@@ -116,11 +109,9 @@ export default function ReportScreen() {
           if (addresses && addresses.length > 0) {
             const addr = addresses[0];
             const parts = [
-              addr.name,
-              addr.street,
-              addr.district || addr.subregion,
+              addr.street || addr.name,
+              addr.subregion || addr.district,
               addr.city,
-              addr.postalCode,
             ].filter(Boolean);
 
             if (parts.length > 0) {
@@ -129,11 +120,10 @@ export default function ReportScreen() {
             }
           }
         } catch {
-          // Native Android geocoder service may not be running on emulator/AOSP
+          // Native reverse geocoder not available or errored
         }
       }
 
-      // 2. Universal Web & Native Fallback: Free OpenStreetMap Nominatim
       if (!resolvedAddress) {
         try {
           const res = await fetch(
@@ -151,43 +141,37 @@ export default function ReportScreen() {
             }
           }
         } catch {
-          // Keep existing/default locationAddress if offline
+          // Fallback to formatted coords
         }
       }
-    } catch (err: any) {
-      if (!silent) {
-        Alert.alert('GPS Signal Issue', err.message || 'Could not acquire precise GPS fix');
+
+      if (!resolvedAddress) {
+        setLocationAddress(`${newCoords.latitude.toFixed(4)}, ${newCoords.longitude.toFixed(4)}`);
       }
+    } catch (err: any) {
+      setLocationError(err?.message || 'Failed to acquire GPS position');
     } finally {
       setIsLocating(false);
     }
   };
 
-  // Acquire initial GPS location on mount
-  useEffect(() => {
-    requestLocation(true);
-  }, []);
-
-  // Real-time camera photo capture
-  const handleTakePhoto = async () => {
+  // Open Camera
+  const handleCapturePhoto = async () => {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert(
           'Camera Permission Required',
-          'EcoPulse requires camera access to take real-time photos of environmental issues with embedded GPS coordinates.'
+          'EcoPulse needs camera access so you can take live photos of waste piles and environmental hazards.'
         );
         return;
       }
-
-      // Re-query GPS coordinate fix synchronously with camera launch
-      requestLocation(true);
 
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
-        quality: 0.7,
+        quality: 0.75,
         base64: true,
       });
 
@@ -195,24 +179,24 @@ export default function ReportScreen() {
         const asset = result.assets[0];
         setEvidenceUri(asset.uri);
         setEvidenceBase64(asset.base64 || null);
-        setIsPhotoLive(true);
-        setPhotoTakenAt(
-          new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-        );
+        setEvidenceFileSize(asset.fileSize || null);
+        if (!title) {
+          setTitle('Waste report');
+        }
       }
     } catch (err: any) {
-      Alert.alert('Camera Error', err.message || 'Unable to open device camera');
+      Alert.alert('Camera Error', err.message || 'Unable to open camera');
     }
   };
 
-  // Photo library selection
-  const handleChoosePhoto = async () => {
+  // Choose from Gallery
+  const handlePickFromGallery = async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert(
           'Gallery Permission Required',
-          'EcoPulse requires photo gallery access to select existing evidence images.'
+          'EcoPulse needs gallery access to select existing evidence photos.'
         );
         return;
       }
@@ -221,7 +205,7 @@ export default function ReportScreen() {
         mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
-        quality: 0.7,
+        quality: 0.75,
         base64: true,
       });
 
@@ -229,64 +213,54 @@ export default function ReportScreen() {
         const asset = result.assets[0];
         setEvidenceUri(asset.uri);
         setEvidenceBase64(asset.base64 || null);
-        setIsPhotoLive(true);
-        setPhotoTakenAt(
-          new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-        );
+        setEvidenceFileSize(asset.fileSize || null);
+        if (!title) {
+          setTitle('Waste report');
+        }
       }
     } catch (err: any) {
-      Alert.alert('Gallery Error', err.message || 'Unable to pick photo from library');
+      Alert.alert('Gallery Error', err.message || 'Unable to pick photo from gallery');
     }
   };
 
-  // Communities
-  const { data: communities } = useQuery({
-    queryKey: ['communities'],
-    queryFn: () => api.communities.list(),
-  });
-  const communityId = communities?.[0]?.id;
+  const handleRemovePhoto = () => {
+    setEvidenceUri(null);
+    setEvidenceBase64(null);
+    setEvidenceFileSize(null);
+  };
 
-  // Past reports for tracking
-  const {
-    data: myReports,
-    isLoading: isReportsLoading,
-    refetch: refetchReports,
-    isRefetching,
-  } = useQuery({
-    queryKey: ['my-reports', user?.id],
-    queryFn: () => api.reports.list({ userId: user?.id }),
-    enabled: !!user?.id,
-  });
+  // Submit Report to Real Backend
+  const handleSubmitReport = async () => {
+    if (!evidenceUri && !evidenceBase64) {
+      Alert.alert('Evidence Required', 'Please take or choose a photo of the waste before submitting.');
+      return;
+    }
 
-  // Submit report mutation
-  const submitMutation = useMutation({
-    mutationFn: async () => {
-      const cleanTitle = title.trim();
-      const cleanDesc = description.trim();
-      if (!cleanTitle || cleanTitle.length < 5) {
-        throw new Error('Title must be at least 5 characters');
-      }
-      if (!cleanDesc || cleanDesc.length < 10) {
-        throw new Error('Description must be at least 10 characters');
-      }
+    if (!locationCoords) {
+      Alert.alert(
+        'GPS Location Required',
+        'Device coordinates are required to dispatch waste cleanup. Please tap "Retry Location".'
+      );
+      return;
+    }
 
-      const targetCommunityId = communityId || '0090c98a-b152-427a-8d94-951d2bf59894';
+    const reportTitle = title.trim() || 'Waste report';
+    const reportDesc = description.trim() || 'Citizen reported waste accumulation for municipal cleanup.';
 
-      let uploadedMediaUrl = evidenceUri;
+    setIsSubmitting(true);
+    try {
+      // Step 1: Upload image to Private S3
+      setSubmitProgressStep('Uploading photo evidence to secure S3...');
+      let finalMediaUrl = evidenceUri;
 
-      // 1. Upload base64 camera photo to backend if captured
       if (evidenceBase64) {
-        try {
-          const uploadRes = await api.reports.uploadImage(
-            evidenceBase64,
-            `report-evidence-${Date.now()}.jpg`,
-            'image/jpeg'
-          );
-          if (uploadRes?.publicUrl) {
-            uploadedMediaUrl = uploadRes.publicUrl;
-          }
-        } catch (uploadErr) {
-          console.warn('Image upload fallback to URI:', uploadErr);
+        const uploadRes = await api.reports.uploadImage(
+          evidenceBase64,
+          `evidence-${Date.now()}.jpg`,
+          'image/jpeg'
+        );
+        if (uploadRes?.publicUrl) {
+          finalMediaUrl = uploadRes.publicUrl;
         }
       }
 
@@ -295,926 +269,547 @@ export default function ReportScreen() {
         coordinates: [locationCoords.longitude, locationCoords.latitude],
       };
 
-      // 2. Create Report with verified GPS coordinates and address
-      const report = await api.reports.create({
-        communityId: targetCommunityId,
+      // Step 2: Create report in backend
+      setSubmitProgressStep('Creating report and registering geo-point...');
+      const createdReport = await api.reports.create({
+        communityId,
         category,
-        title: cleanTitle,
-        description: cleanDesc,
-        locationAddress: locationAddress || 'Kothrud Stand, DP Road, Pune',
+        title: reportTitle,
+        description: reportDesc,
+        locationAddress: locationAddress || 'Civic location',
         locationGeoJson: geoPoint,
         clientEventId: `client-rep-${Date.now()}`,
       });
 
-      // 3. Attach Evidence with embedded metadata and exact coordinates
-      if (uploadedMediaUrl) {
-        await api.reports.attachEvidence(report.id, {
-          mediaUrl: uploadedMediaUrl,
+      // Step 3: Attach evidence to trigger backend AI processing pipeline
+      setSubmitProgressStep('Attaching evidence & queueing Gemini Vision AI...');
+      if (finalMediaUrl) {
+        await api.reports.attachEvidence(createdReport.id, {
+          mediaUrl: finalMediaUrl,
           mediaType: 'IMAGE',
           locationGeoJson: geoPoint,
           metadata: {
             captureTimestamp: new Date().toISOString(),
             accuracyMeters: locationCoords.accuracy,
             altitudeMeters: locationCoords.altitude,
-            isDeviceCapture: isPhotoLive,
-            source: isPhotoLive ? 'LIVE_CAMERA_CAPTURE' : 'PRESET_SAMPLE',
+            isDeviceCapture: true,
+            source: 'LIVE_DEVICE_CAMERA',
           },
         });
       }
 
-      return report;
-    },
-    onSuccess: () => {
-      Alert.alert(
-        'Report Submitted with Real-Time Geotag!',
-        'Your environmental hazard report with real-time photo evidence and device GPS coordinates has been transmitted to ward maintainers. +20 EcoPoints queued for verification!'
-      );
-      queryClient.invalidateQueries({ queryKey: ['my-reports'] });
+      setSubmitProgressStep('Success! Opening report details...');
+
+      // Invalidate queries so dashboard and reports list reflect the new report
       queryClient.invalidateQueries({ queryKey: ['home-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['my-reports'] });
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
+
+      // Reset form
+      handleRemovePhoto();
       setTitle('');
       setDescription('');
-      setTab('TRACK');
-    },
-    onError: (err: any) => {
-      Alert.alert('Submission Failed', err.message || 'Could not file report');
-    },
-  });
+
+      // Navigate directly to the real report detail screen
+      router.push(`/(resident)/report/${createdReport.id}` as any);
+    } catch (err: any) {
+      Alert.alert('Submission Failed', err.message || 'Could not submit report. Please check connection and retry.');
+    } finally {
+      setIsSubmitting(false);
+      setSubmitProgressStep('');
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       {/* Top Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Text style={styles.backBtnText}>← Back</Text>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.7}>
+          <Ionicons name="arrow-back" size={24} color={theme.colors.forest} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Environmental Action</Text>
-        <View style={{ width: 50 }} />
+        <Text style={styles.headerTitle}>Report Waste</Text>
+        <View style={{ width: 36 }} />
       </View>
 
-      {/* Mode Switcher */}
-      <View style={styles.tabsRow}>
-        <TouchableOpacity
-          style={[styles.tabBtn, tab === 'NEW' && styles.tabBtnActive]}
-          onPress={() => setTab('NEW')}
-        >
-          <Text style={[styles.tabBtnText, tab === 'NEW' && styles.tabBtnTextActive]}>
-            File Report
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabBtn, tab === 'TRACK' && styles.tabBtnActive]}
-          onPress={() => setTab('TRACK')}
-        >
-          <Text style={[styles.tabBtnText, tab === 'TRACK' && styles.tabBtnTextActive]}>
-            Track Status ({myReports?.length || 0})
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {tab === 'NEW' ? (
-        <ScrollView contentContainerStyle={styles.scroll}>
-          {/* Step 1: Category */}
-          <Text style={styles.sectionLabel}>1. Select Hazard Category</Text>
-          <View style={styles.categoryGrid}>
-            {CATEGORIES.map((cat) => (
-              <TouchableOpacity
-                key={cat.value}
-                style={[
-                  styles.categoryCard,
-                  category === cat.value && styles.categoryCardActive,
-                ]}
-                onPress={() => setCategory(cat.value)}
-              >
-                <Text style={styles.categoryIcon}>{cat.icon}</Text>
-                <Text
-                  style={[
-                    styles.categoryText,
-                    category === cat.value && styles.categoryTextActive,
-                  ]}
-                >
-                  {cat.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* Step 2: Real-Time Photo Evidence Capture */}
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionLabel}>2. Verified Photo Evidence</Text>
-            {isPhotoLive && (
-              <View style={styles.liveBadge}>
-                <Text style={styles.liveBadgeText}>🔴 LIVE CAPTURE</Text>
-              </View>
-            )}
-          </View>
-
-          {/* Large Live Photo Preview with Watermark Overlay */}
-          <View style={styles.evidenceContainer}>
-            <Image
-              source={{
-                uri: evidenceUri.startsWith('/uploads/') ? `${API_URL}${evidenceUri}` : evidenceUri,
-              }}
-              style={styles.evidencePreview}
-            />
-
-            {/* GPS & Capture Watermark Pill */}
-            <View style={styles.watermarkOverlay}>
-              <View style={styles.watermarkRow}>
-                <Text style={styles.watermarkTitle}>📍 GPS LOCATION VERIFIED</Text>
-                <Text style={styles.watermarkAccuracy}>
-                  ±{locationCoords.accuracy ? Math.round(locationCoords.accuracy) : 4}m
-                </Text>
-              </View>
-              <Text style={styles.watermarkCoords}>
-                {locationCoords.latitude.toFixed(5)}° N, {locationCoords.longitude.toFixed(5)}° E
-              </Text>
-              <Text style={styles.watermarkTimestamp}>
-                ⏱️ Captured: {photoTakenAt}
-              </Text>
-            </View>
-          </View>
-
-          {/* Photo Capture Actions: Camera & Gallery */}
-          <View style={styles.actionRow}>
-            <TouchableOpacity style={styles.cameraActionBtn} onPress={handleTakePhoto}>
-              <Text style={styles.cameraActionIcon}>📸</Text>
-              <Text style={styles.cameraActionText}>Take Live Photo</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.galleryActionBtn} onPress={handleChoosePhoto}>
-              <Text style={styles.galleryActionIcon}>🖼️</Text>
-              <Text style={styles.galleryActionText}>Choose from Gallery</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Fallback Sample Presets */}
-          <Text style={styles.presetLabel}>Or select test hazard reference:</Text>
-          <View style={styles.photoPickerRow}>
-            {SAMPLE_EVIDENCE_URLS.map((url, idx) => (
-              <TouchableOpacity
-                key={idx}
-                style={[
-                  styles.thumbBtn,
-                  evidenceUri === url && styles.thumbBtnActive,
-                ]}
-                onPress={() => {
-                  setEvidenceUri(url);
-                  setEvidenceBase64(null);
-                  setIsPhotoLive(false);
-                  setPhotoTakenAt(`Sample Reference #${idx + 1}`);
-                }}
-              >
-                <Image source={{ uri: url }} style={styles.thumbImage} />
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* Step 3: Title & Description */}
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionLabel}>3. Report Details</Text>
-            <TouchableOpacity
-              style={[styles.refreshGpsBtn, { backgroundColor: colors.primary[50], borderColor: colors.primary[300] }]}
-              onPress={() => {
-                setTitle('Overflowing dry waste bin near Kothrud Stand');
-                setDescription(
-                  'Commercial dry waste container has been overflowing for 2 days. Plastic bottles and packaging spilled onto sidewalk.'
-                );
-                setLocationAddress('Kothrud Stand, DP Road, Pune');
-              }}
-            >
-              <Text style={[styles.refreshGpsText, { color: colors.primary[900], fontWeight: '600' }]}>
-                ⚡ Autofill Demo
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.inputTitle}>Title</Text>
-          <TextInput
-            style={styles.textInput}
-            placeholder="e.g. Broken bin spilling plastics onto sidewalk"
-            placeholderTextColor={colors.neutral[400]}
-            value={title}
-            onChangeText={setTitle}
-          />
-
-          <Text style={styles.inputTitle}>Description</Text>
-          <TextInput
-            style={[styles.textInput, { minHeight: 80 }]}
-            placeholder="Describe the hazard, estimated volume, and public danger..."
-            placeholderTextColor={colors.neutral[400]}
-            value={description}
-            onChangeText={setDescription}
-            multiline
-          />
-
-          {/* Step 4: Real-time Device GPS Location */}
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionLabel}>4. Real-Time Device Location</Text>
-            <TouchableOpacity
-              style={styles.refreshGpsBtn}
-              onPress={() => requestLocation(false)}
-              disabled={isLocating}
-            >
-              {isLocating ? (
-                <ActivityIndicator size="small" color={colors.primary[900]} />
-              ) : (
-                <Text style={styles.refreshGpsText}>🔄 Refresh GPS</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-
-          {/* Live GPS Telemetry Card */}
-          <View style={styles.gpsTelemetryCard}>
-            <View style={styles.gpsTelemetryHeader}>
-              <View style={styles.gpsStatusIndicator}>
-                <View style={styles.pulsingDot} />
-                <Text style={styles.gpsStatusText}>Live Device Location Locked</Text>
-              </View>
-              <Text style={styles.gpsAccuracyBadge}>
-                High Precision (±{locationCoords.accuracy ? Math.round(locationCoords.accuracy) : 4}m)
-              </Text>
-            </View>
-
-            <View style={styles.coordsGrid}>
-              <View style={styles.coordBox}>
-                <Text style={styles.coordBoxLabel}>LATITUDE</Text>
-                <Text style={styles.coordBoxValue}>{locationCoords.latitude.toFixed(6)}° N</Text>
-              </View>
-              <View style={styles.coordBox}>
-                <Text style={styles.coordBoxLabel}>LONGITUDE</Text>
-                <Text style={styles.coordBoxValue}>{locationCoords.longitude.toFixed(6)}° E</Text>
-              </View>
-            </View>
-          </View>
-
-          <Text style={styles.inputTitle}>Street Address (Auto-Geocoded)</Text>
-          <TextInput
-            style={styles.textInput}
-            placeholder="Street address or landmark"
-            placeholderTextColor={colors.neutral[400]}
-            value={locationAddress}
-            onChangeText={setLocationAddress}
-          />
-
-          {/* Submit Action */}
-          <TouchableOpacity
-            style={[
-              styles.submitBtn,
-              (!title.trim() ||
-                title.trim().length < 5 ||
-                !description.trim() ||
-                description.trim().length < 10 ||
-                submitMutation.isPending) &&
-                styles.submitBtnDisabled,
-            ]}
-            onPress={() => {
-              const cleanTitle = title.trim();
-              const cleanDesc = description.trim();
-              if (!cleanTitle || cleanTitle.length < 5) {
-                Alert.alert('Title Required', 'Please enter a title of at least 5 characters.');
-                return;
-              }
-              if (!cleanDesc || cleanDesc.length < 10) {
-                Alert.alert('Description Required', 'Please enter a description of at least 10 characters.');
-                return;
-              }
-              submitMutation.mutate();
-            }}
-            disabled={
-              !title.trim() ||
-              title.trim().length < 5 ||
-              !description.trim() ||
-              description.trim().length < 10 ||
-              submitMutation.isPending
-            }
-          >
-            {submitMutation.isPending ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.submitBtnText}>Submit Geotagged Report (+20 pts)</Text>
-            )}
-          </TouchableOpacity>
-        </ScrollView>
-      ) : (
-        /* Status Tracker Tab */
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <ScrollView
-          contentContainerStyle={styles.scroll}
-          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetchReports} />}
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
         >
-          {isReportsLoading ? (
-            <ActivityIndicator size="large" color={colors.primary[900]} style={{ marginTop: 40 }} />
-          ) : !myReports || myReports.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyIcon}>🌱</Text>
-              <Text style={styles.emptyTitle}>No Reports Filed</Text>
-              <Text style={styles.emptySub}>
-                Spot an environmental issue? File a geotagged report with photo evidence to earn EcoPoints and keep your city clean!
-              </Text>
+          {/* Section 1: Capture Evidence */}
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeaderRow}>
+              <View style={styles.stepNumCircle}>
+                <Text style={styles.stepNumText}>1</Text>
+              </View>
+              <Text style={styles.sectionTitle}>Capture Evidence</Text>
             </View>
-          ) : (
-            myReports.map((rep) => {
-              const evidenceItem = rep.evidence?.[0];
-              const rawMediaUrl = evidenceItem?.mediaUrl;
-              const displayUrl = rawMediaUrl
-                ? rawMediaUrl.startsWith('/uploads/')
-                  ? `${API_URL}${rawMediaUrl}`
-                  : rawMediaUrl
-                : null;
 
-              const geoCoords = rep.locationGeoJson?.coordinates as number[] | undefined;
-              const hasCoords = Array.isArray(geoCoords) && geoCoords.length === 2;
+            {evidenceUri ? (
+              <View style={styles.previewContainer}>
+                <Image source={{ uri: evidenceUri }} style={styles.previewImg} resizeMode="cover" />
+                <TouchableOpacity
+                  style={styles.removePhotoBtn}
+                  onPress={handleRemovePhoto}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="close-circle" size={28} color="#EF4444" />
+                </TouchableOpacity>
 
-              return (
-                <View key={rep.id} style={styles.reportCard}>
-                  <View style={styles.reportHeader}>
-                    <Text style={styles.catLabel}>{formatCategory(rep.category)}</Text>
-                    <View style={[styles.statusPill, getStatusPill(rep.status)]}>
-                      <Text style={styles.statusPillText}>{rep.status}</Text>
-                    </View>
-                  </View>
+                <View style={styles.retakeRow}>
+                  <TouchableOpacity
+                    style={styles.retakeBtn}
+                    onPress={handleCapturePhoto}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="camera-outline" size={16} color={theme.colors.forest} style={{ marginRight: 6 }} />
+                    <Text style={styles.retakeBtnText}>Retake</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.retakeBtn}
+                    onPress={handlePickFromGallery}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="images-outline" size={16} color={theme.colors.forest} style={{ marginRight: 6 }} />
+                    <Text style={styles.retakeBtnText}>Gallery</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.captureBox}>
+                <View style={styles.cameraIconCircle}>
+                  <Ionicons name="camera" size={36} color={theme.colors.primary} />
+                </View>
+                <Text style={styles.captureHeading}>Take a photo of the waste</Text>
+                <Text style={styles.captureSub}>
+                  Clear photos help Vision AI identify waste categories and dispatch cleanup teams faster.
+                </Text>
 
-                  {/* Evidence Thumbnail & Details */}
-                  {displayUrl && (
-                    <View style={styles.trackEvidenceContainer}>
-                      <Image source={{ uri: displayUrl }} style={styles.trackEvidenceImage} />
-                      {hasCoords && (
-                        <View style={styles.trackCoordsOverlay}>
-                          <Text style={styles.trackCoordsText}>
-                            📍 {geoCoords[1].toFixed(5)}° N, {geoCoords[0].toFixed(5)}° E
-                          </Text>
-                        </View>
-                      )}
-                    </View>
+                <View style={styles.actionButtonsRow}>
+                  <TouchableOpacity
+                    style={styles.cameraActionBtn}
+                    onPress={handleCapturePhoto}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="camera" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+                    <Text style={styles.cameraActionBtnText}>Take Photo</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.galleryActionBtn}
+                    onPress={handlePickFromGallery}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="images" size={20} color={theme.colors.forest} style={{ marginRight: 8 }} />
+                    <Text style={styles.galleryActionBtnText}>Choose Gallery</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </View>
+
+          {/* Section 2: Verified Location */}
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeaderRow}>
+              <View style={styles.stepNumCircle}>
+                <Text style={styles.stepNumText}>2</Text>
+              </View>
+              <Text style={styles.sectionTitle}>Location Coordinates</Text>
+            </View>
+
+            <View style={styles.locationContainer}>
+              <View style={styles.locationInfoRow}>
+                <Ionicons name="location" size={22} color={theme.colors.primary} />
+                <View style={styles.locationTextWrap}>
+                  <Text style={styles.addressText} numberOfLines={2}>
+                    {locationAddress || (isLocating ? 'Acquiring GPS position...' : 'Location not acquired')}
+                  </Text>
+                  {locationCoords && (
+                    <Text style={styles.coordsText}>
+                      {locationCoords.latitude.toFixed(5)}, {locationCoords.longitude.toFixed(5)}
+                      {locationCoords.accuracy ? ` (±${Math.round(locationCoords.accuracy)}m)` : ''}
+                    </Text>
                   )}
-
-                  <Text style={styles.cardTitle}>{rep.title}</Text>
-                  <Text style={styles.cardDesc}>{rep.description}</Text>
-
-                  {rep.locationAddress && (
-                    <Text style={styles.cardLoc}>📍 {rep.locationAddress}</Text>
-                  )}
-
-                  {/* Closed-loop lifecycle progress bar */}
-                  <View style={styles.lifecycleContainer}>
-                    <View style={styles.lifecycleRow}>
-                      {getLifecycleSteps(rep.status).map((step, idx) => (
-                        <View key={step.name} style={styles.stepItem}>
-                          <View
-                            style={[
-                              styles.stepCircle,
-                              step.active && styles.stepCircleActive,
-                              step.completed && styles.stepCircleCompleted,
-                            ]}
-                          >
-                            <Text style={styles.stepIcon}>{step.completed ? '✓' : idx + 1}</Text>
-                          </View>
-                          <Text style={styles.stepName}>{step.name}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-
-                  {rep.status === 'VERIFIED' && (
-                    <View style={styles.rewardBanner}>
-                      <Text style={styles.rewardBannerText}>
-                        🎉 Verified by Ward Maintainer! +{rep.pointsReward} EcoPoints credited.
-                      </Text>
-                    </View>
-                  )}
-
-                  {rep.status === 'RESOLVED' && (
-                    <View style={[styles.rewardBanner, { backgroundColor: colors.primary[100] }]}>
-                      <Text style={[styles.rewardBannerText, { color: colors.primary[900] }]}>
-                        🌟 Field crew completed cleanup. Community hazard resolved!
-                      </Text>
-                    </View>
+                  {locationError && (
+                    <Text style={styles.locationErrorText}>{locationError}</Text>
                   )}
                 </View>
-              );
-            })
+              </View>
+
+              <TouchableOpacity
+                style={styles.retryLocationBtn}
+                onPress={() => fetchCurrentLocation(false)}
+                disabled={isLocating}
+                activeOpacity={0.7}
+              >
+                {isLocating ? (
+                  <ActivityIndicator size="small" color={theme.colors.primary} />
+                ) : (
+                  <>
+                    <Ionicons name="refresh" size={16} color={theme.colors.forest} style={{ marginRight: 4 }} />
+                    <Text style={styles.retryLocationText}>Update GPS</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Section 3: Details & Confirmation */}
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeaderRow}>
+              <View style={styles.stepNumCircle}>
+                <Text style={styles.stepNumText}>3</Text>
+              </View>
+              <Text style={styles.sectionTitle}>Report Details</Text>
+            </View>
+
+            <Text style={styles.inputLabel}>Title</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. Waste report"
+              placeholderTextColor={theme.colors.textMuted}
+              value={title}
+              onChangeText={setTitle}
+            />
+
+            <Text style={styles.inputLabel}>Notes / Description (Optional)</Text>
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              placeholder="Describe what kind of waste it is, accessibility, or hazards..."
+              placeholderTextColor={theme.colors.textMuted}
+              value={description}
+              onChangeText={setDescription}
+              multiline
+              numberOfLines={3}
+            />
+          </View>
+
+          {/* Submission Indicator / Status */}
+          {isSubmitting && (
+            <View style={styles.progressCard}>
+              <ActivityIndicator size="small" color={theme.colors.primary} style={{ marginRight: 10 }} />
+              <Text style={styles.progressText}>{submitProgressStep}</Text>
+            </View>
           )}
+
+          {/* Submit Action Button */}
+          <TouchableOpacity
+            style={[
+              styles.submitButton,
+              (!evidenceUri || isSubmitting) && styles.submitButtonDisabled,
+            ]}
+            onPress={handleSubmitReport}
+            disabled={!evidenceUri || isSubmitting}
+            activeOpacity={0.85}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <>
+                <Ionicons name="paper-plane" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+                <Text style={styles.submitButtonText}>Submit Report</Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          <View style={{ height: 40 }} />
         </ScrollView>
-      )}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
-}
-
-function formatCategory(cat: string) {
-  return cat.replace('_', ' ');
-}
-
-function getStatusPill(status: string) {
-  switch (status) {
-    case 'VERIFIED':
-    case 'RESOLVED':
-      return { backgroundColor: colors.primary[100] };
-    case 'REJECTED':
-      return { backgroundColor: '#FEE2E2' };
-    default:
-      return { backgroundColor: '#FEF3C7' };
-  }
-}
-
-function getLifecycleSteps(status: string) {
-  const isUnderReview = status !== 'DRAFT';
-  const isVerified = status === 'VERIFIED' || status === 'RESOLVED' || status === 'CLOSED';
-  const isResolved = status === 'RESOLVED' || status === 'CLOSED';
-
-  return [
-    { name: 'Submitted', completed: isUnderReview, active: status === 'SUBMITTED' },
-    { name: 'Review', completed: isVerified, active: status === 'UNDER_REVIEW' },
-    { name: 'Verified', completed: isVerified, active: status === 'VERIFIED' },
-    { name: 'Resolved', completed: isResolved, active: status === 'RESOLVED' },
-  ];
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.surface.background,
+    backgroundColor: theme.colors.background, // #F4F8F5
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.md,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: colors.surface.border,
-    backgroundColor: colors.surface.white,
+    borderBottomColor: theme.colors.border,
+    backgroundColor: '#FFFFFF',
   },
   backBtn: {
-    padding: 6,
-  },
-  backBtnText: {
-    color: colors.primary[900],
-    fontWeight: '700',
-    fontSize: 14,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F0FDF4',
   },
   headerTitle: {
-    ...typography.h3,
-    color: colors.neutral[900],
-  },
-  tabsRow: {
-    flexDirection: 'row',
-    backgroundColor: colors.surface.white,
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.surface.border,
-    gap: 12,
-  },
-  tabBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderRadius: radius.md,
-    backgroundColor: colors.neutral[100],
-  },
-  tabBtnActive: {
-    backgroundColor: colors.primary[900],
-  },
-  tabBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.neutral[600],
-  },
-  tabBtnTextActive: {
-    color: colors.surface.white,
+    fontSize: 18,
+    fontWeight: '800',
+    color: theme.colors.forest,
   },
   scroll: {
-    padding: spacing.base,
-    paddingBottom: 50,
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 16,
+  },
+  sectionCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    ...theme.shadows.card,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.sm,
-    marginTop: spacing.sm,
+    marginBottom: 14,
   },
-  sectionLabel: {
-    ...typography.bodyBold,
-    color: colors.neutral[900],
-    fontSize: 15,
-  },
-  liveBadge: {
-    backgroundColor: '#FEE2E2',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: '#FCA5A5',
-  },
-  liveBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#DC2626',
-    letterSpacing: 0.5,
-  },
-  categoryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: spacing.base,
-  },
-  categoryCard: {
-    width: '31%',
-    backgroundColor: colors.surface.card,
-    borderRadius: radius.md,
-    padding: spacing.sm,
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: colors.surface.border,
-  },
-  categoryCardActive: {
-    borderColor: colors.primary[900],
-    backgroundColor: colors.primary[50],
-  },
-  categoryIcon: {
-    fontSize: 24,
-    marginBottom: 4,
-  },
-  categoryText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.neutral[700],
-    textAlign: 'center',
-  },
-  categoryTextActive: {
-    color: colors.primary[900],
-    fontWeight: '700',
-  },
-  evidenceContainer: {
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-    position: 'relative',
-    height: 200,
-    marginBottom: 12,
-    borderWidth: 1.5,
-    borderColor: colors.surface.border,
-  },
-  evidencePreview: {
-    width: '100%',
-    height: '100%',
-  },
-  watermarkOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(14, 59, 46, 0.88)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  watermarkRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
-  watermarkTitle: {
-    color: '#A7F3D0',
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  watermarkAccuracy: {
-    color: '#D1FAE5',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  watermarkCoords: {
-    color: colors.surface.white,
-    fontSize: 12,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-  },
-  watermarkTimestamp: {
-    color: colors.neutral[200],
-    fontSize: 10,
-    marginTop: 2,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 12,
-  },
-  cameraActionBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary[900],
-    paddingVertical: 12,
-    borderRadius: radius.md,
-    gap: 8,
-    shadowColor: colors.primary[900],
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  cameraActionIcon: {
-    fontSize: 16,
-  },
-  cameraActionText: {
-    color: colors.surface.white,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  galleryActionBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface.white,
-    borderWidth: 1.5,
-    borderColor: colors.primary[900],
-    paddingVertical: 12,
-    borderRadius: radius.md,
-    gap: 8,
-  },
-  galleryActionIcon: {
-    fontSize: 16,
-  },
-  galleryActionText: {
-    color: colors.primary[900],
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  presetLabel: {
-    fontSize: 11,
-    color: colors.neutral[500],
-    marginBottom: 6,
-    fontWeight: '600',
-  },
-  photoPickerRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: spacing.base,
-  },
-  thumbBtn: {
-    width: 60,
-    height: 60,
-    borderRadius: radius.md,
-    overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  thumbBtnActive: {
-    borderColor: colors.primary[900],
-  },
-  thumbImage: {
-    width: '100%',
-    height: '100%',
-  },
-  refreshGpsBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radius.sm,
-    backgroundColor: colors.primary[50],
-  },
-  refreshGpsText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.primary[900],
-  },
-  gpsTelemetryCard: {
-    backgroundColor: '#F0FDF4',
-    borderWidth: 1.5,
-    borderColor: '#BBF7D0',
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginBottom: spacing.base,
-  },
-  gpsTelemetryHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  gpsStatusIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  pulsingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#16A34A',
-  },
-  gpsStatusText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#166534',
-  },
-  gpsAccuracyBadge: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#15803D',
-  },
-  coordsGrid: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  coordBox: {
-    flex: 1,
-    backgroundColor: colors.surface.white,
-    padding: 8,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: '#DCFCE7',
-  },
-  coordBoxLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.neutral[500],
-    marginBottom: 2,
-  },
-  coordBoxValue: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#065F46',
-    fontVariant: ['tabular-nums'],
-  },
-  inputTitle: {
-    ...typography.caption,
-    color: colors.neutral[700],
-    marginBottom: 4,
-    textTransform: 'uppercase',
-  },
-  textInput: {
-    backgroundColor: colors.surface.white,
-    borderWidth: 1,
-    borderColor: colors.surface.border,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    fontSize: 14,
-    color: colors.neutral[900],
-    marginBottom: spacing.base,
-  },
-  submitBtn: {
-    backgroundColor: colors.primary[900],
-    paddingVertical: 15,
-    borderRadius: radius.lg,
-    alignItems: 'center',
-    marginTop: spacing.sm,
-    shadowColor: colors.primary[900],
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  submitBtnDisabled: {
-    opacity: 0.5,
-  },
-  submitBtnText: {
-    color: colors.surface.white,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  emptyCard: {
-    alignItems: 'center',
-    padding: spacing['2xl'],
-  },
-  emptyIcon: {
-    fontSize: 48,
-    marginBottom: spacing.sm,
-  },
-  emptyTitle: {
-    ...typography.h3,
-    color: colors.neutral[900],
-  },
-  emptySub: {
-    fontSize: 13,
-    color: colors.neutral[500],
-    textAlign: 'center',
-    marginTop: 4,
-    lineHeight: 18,
-  },
-  reportCard: {
-    backgroundColor: colors.surface.card,
-    borderRadius: radius.lg,
-    padding: spacing.base,
-    marginBottom: spacing.base,
-    borderWidth: 1,
-    borderColor: colors.surface.border,
-  },
-  reportHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  catLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: colors.primary[700],
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  statusPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radius.sm,
-  },
-  statusPillText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.neutral[800],
-  },
-  trackEvidenceContainer: {
-    borderRadius: radius.md,
-    overflow: 'hidden',
-    position: 'relative',
-    height: 140,
-    marginBottom: 10,
-  },
-  trackEvidenceImage: {
-    width: '100%',
-    height: '100%',
-  },
-  trackCoordsOverlay: {
-    position: 'absolute',
-    bottom: 6,
-    left: 6,
-    backgroundColor: 'rgba(0,0,0,0.65)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radius.sm,
-  },
-  trackCoordsText: {
-    color: colors.surface.white,
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  cardTitle: {
-    ...typography.bodyBold,
-    color: colors.neutral[900],
-    marginBottom: 4,
-  },
-  cardDesc: {
-    fontSize: 13,
-    color: colors.neutral[600],
-    lineHeight: 18,
-    marginBottom: 6,
-  },
-  cardLoc: {
-    fontSize: 12,
-    color: colors.neutral[500],
-    marginBottom: 10,
-  },
-  lifecycleContainer: {
-    backgroundColor: colors.neutral[50],
-    borderRadius: radius.md,
-    padding: 10,
-    marginTop: 6,
-    marginBottom: 6,
-  },
-  lifecycleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  stepItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  stepCircle: {
+  stepNumCircle: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: colors.neutral[200],
+    backgroundColor: theme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 8,
+  },
+  stepNumText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 12,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: theme.colors.forest,
+  },
+
+  // Capture Box
+  captureBox: {
+    borderWidth: 2,
+    borderColor: '#E2E8F0',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+  },
+  cameraIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#F0FDF4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  captureHeading: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: theme.colors.forest,
     marginBottom: 4,
   },
-  stepCircleActive: {
-    backgroundColor: colors.accent.points,
-  },
-  stepCircleCompleted: {
-    backgroundColor: colors.primary[700],
-  },
-  stepIcon: {
-    color: colors.surface.white,
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  stepName: {
-    fontSize: 10,
-    color: colors.neutral[600],
-    fontWeight: '500',
-  },
-  rewardBanner: {
-    backgroundColor: colors.accent.pointsBg,
-    borderRadius: radius.md,
-    padding: 10,
-    marginTop: 8,
-  },
-  rewardBannerText: {
-    color: colors.accent.points,
+  captureSub: {
     fontSize: 12,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  actionButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+  },
+  cameraActionBtn: {
+    flex: 1,
+    backgroundColor: theme.colors.primary,
+    height: 44,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cameraActionBtnText: {
+    color: '#FFFFFF',
     fontWeight: '700',
+    fontSize: 14,
+  },
+  galleryActionBtn: {
+    flex: 1,
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#C6E7D2',
+    height: 44,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  galleryActionBtnText: {
+    color: theme.colors.forest,
+    fontWeight: '700',
+    fontSize: 14,
+  },
+
+  // Preview Box
+  previewContainer: {
+    position: 'relative',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  previewImg: {
+    width: '100%',
+    height: 220,
+    borderRadius: 12,
+  },
+  removePhotoBtn: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+  },
+  retakeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    gap: 10,
+  },
+  retakeBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 8,
+  },
+  retakeBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.colors.forest,
+  },
+
+  // Location
+  locationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    padding: 12,
+    borderRadius: 10,
+  },
+  locationInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 10,
+  },
+  locationTextWrap: {
+    marginLeft: 10,
+    flex: 1,
+  },
+  addressText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: theme.colors.forest,
+  },
+  coordsText: {
+    fontSize: 11,
+    color: theme.colors.textMuted,
+    marginTop: 2,
+  },
+  locationErrorText: {
+    fontSize: 11,
+    color: '#EF4444',
+    marginTop: 2,
+  },
+  retryLocationBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  retryLocationText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: theme.colors.forest,
+  },
+
+  // Inputs
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.colors.forest,
+    marginBottom: 6,
+    marginTop: 4,
+  },
+  input: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: theme.colors.textPrimary,
+    marginBottom: 12,
+  },
+  textArea: {
+    height: 80,
+    textAlignVertical: 'top',
+  },
+
+  // Progress
+  progressCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0FDF4',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#C6E7D2',
+    marginBottom: 16,
+  },
+  progressText: {
+    fontSize: 13,
+    color: theme.colors.forest,
+    fontWeight: '600',
+  },
+
+  // Submit
+  submitButton: {
+    backgroundColor: theme.colors.primary,
+    height: 52,
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: theme.colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  submitButtonDisabled: {
+    backgroundColor: '#94A3B8',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  submitButtonText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
 });

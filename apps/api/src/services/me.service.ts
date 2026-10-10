@@ -1,6 +1,7 @@
 import type { ActivityItem, HomeDashboardData } from '@ecopulse/types';
 import { communityRepository } from '../repositories/community.repository.js';
 import { missionRepository } from '../repositories/mission.repository.js';
+import { reportRepository } from '../repositories/report.repository.js';
 import { userRepository } from '../repositories/user.repository.js';
 import { pointsService } from './points.service.js';
 import { streakService } from './streak.service.js';
@@ -19,6 +20,21 @@ export class MeService {
     const balance = await pointsService.getBalance(userId);
     const streak = await streakService.getStreak(userId);
     const ledger = await pointsService.getLedgerHistory(userId, 10);
+
+    // Fetch user reports for impact stats & recent list
+    const userReports = await reportRepository.list({ userId });
+    const reportsCount = userReports.length;
+    const verifiedCount = userReports.filter(
+      (r) => r.status === 'VERIFIED' || r.status === 'RESOLVED' || r.status === 'ANALYZED'
+    ).length;
+    const resolvedCount = userReports.filter((r) => r.status === 'RESOLVED').length;
+
+    const impactStats = {
+      reportsCount,
+      verifiedCount,
+      resolvedCount,
+      pointsBalance: balance.totalPoints,
+    };
 
     // Find active mission or next available mission
     const missions = await missionRepository.list(community?.id, userId);
@@ -58,6 +74,8 @@ export class MeService {
       currentStreak: streak.currentStreak,
       activeMission,
       recentActivity,
+      impactStats,
+      recentReports: userReports.slice(0, 5),
     };
   }
 

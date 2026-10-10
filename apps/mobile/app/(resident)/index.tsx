@@ -1,9 +1,10 @@
-import { colors, radius, spacing, typography } from '@ecopulse/design-system';
+import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import {
   ActivityIndicator,
+  Image,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -12,616 +13,713 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { theme } from '../../constants/theme';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/auth.store';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const logout = useAuthStore((state) => state.logout);
+  const { user } = useAuthStore();
 
   const {
-    data,
+    data: dashboardData,
     isLoading,
-    isError,
-    error,
-    refetch,
     isRefetching,
+    refetch,
   } = useQuery({
     queryKey: ['home-dashboard'],
     queryFn: () => api.me.get(),
   });
 
-  const handleLogout = () => {
-    logout();
-    router.replace('/(auth)/welcome');
+  const { data: userReports = [], refetch: refetchReports } = useQuery({
+    queryKey: ['my-reports', user?.id],
+    queryFn: () => api.reports.list({ userId: user?.id }),
+    enabled: !!user?.id,
+  });
+
+  const handleRefresh = async () => {
+    await Promise.all([refetch(), refetchReports()]);
   };
 
-  if (isLoading) {
-    return (
-      <SafeAreaView style={styles.centerContainer}>
-        <ActivityIndicator size="large" color={colors.primary[900]} />
-        <Text style={styles.loadingText}>Fetching EcoPulse telemetry...</Text>
-      </SafeAreaView>
-    );
-  }
+  const impact = dashboardData?.impactStats || {
+    reportsCount: userReports.length,
+    verifiedCount: userReports.filter(
+      (r) => r.status === 'VERIFIED' || r.status === 'RESOLVED' || r.status === 'ANALYZED'
+    ).length,
+    resolvedCount: userReports.filter((r) => r.status === 'RESOLVED').length,
+    pointsBalance: dashboardData?.pointBalance ?? 0,
+  };
 
-  if (isError) {
-    return (
-      <SafeAreaView style={styles.centerContainer}>
-        <Text style={styles.errorTitle}>Connection Error</Text>
-        <Text style={styles.errorSub}>
-          {(error as Error)?.message || 'Failed to load community dashboard.'}
-        </Text>
-        <TouchableOpacity style={styles.retryButton} onPress={() => refetch()}>
-          <Text style={styles.retryButtonText}>Retry</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.retryButton, { marginTop: 12, backgroundColor: colors.neutral[300] }]} onPress={handleLogout}>
-          <Text style={[styles.retryButtonText, { color: colors.neutral[900] }]}>Log Out</Text>
-        </TouchableOpacity>
-      </SafeAreaView>
-    );
-  }
+  const recentReports = userReports.slice(0, 4);
+  const userInitial = user?.fullName ? user.fullName.charAt(0).toUpperCase() : 'G';
 
-  const {
-    user,
-    community,
-    pointBalance,
-    currentStreak,
-    activeMission,
-    recentActivity,
-  } = data || {};
+  const formatReportDate = (isoString?: string) => {
+    if (!isoString) return 'Today';
+    try {
+      const d = new Date(isoString);
+      return d.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
+    } catch {
+      return 'Recently';
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'ANALYZED':
+        return {
+          bg: theme.colors.status.analyzedBg,
+          text: theme.colors.status.analyzedText,
+          label: 'Analyzed',
+          icon: 'bar-chart',
+        };
+      case 'FLAGGED_FOR_REVIEW':
+      case 'REVIEW_REQUIRED':
+        return {
+          bg: theme.colors.status.reviewBg,
+          text: theme.colors.status.reviewText,
+          label: 'Needs Review',
+          icon: 'search',
+        };
+      case 'RESOLVED':
+        return {
+          bg: theme.colors.status.resolvedBg,
+          text: theme.colors.status.resolvedText,
+          label: 'Resolved',
+          icon: 'checkmark-circle',
+        };
+      case 'IN_PROGRESS':
+      case 'PROCESSING':
+        return {
+          bg: theme.colors.status.processingBg,
+          text: theme.colors.status.processingText,
+          label: 'Processing',
+          icon: 'time',
+        };
+      default:
+        return {
+          bg: theme.colors.status.pendingBg,
+          text: theme.colors.status.pendingText,
+          label: 'Submitted',
+          icon: 'document-text',
+        };
+    }
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
-      >
-        {/* Header Bar */}
-        <View style={styles.headerRow}>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      {/* 1. Header Bar matching Screenshot 4 */}
+      <View style={styles.topHeader}>
+        <View style={styles.brandRow}>
+          <View style={styles.logoBadge}>
+            <Ionicons name="leaf" size={20} color={theme.colors.primary} />
+          </View>
           <View>
-            <Text style={styles.greeting}>Welcome back,</Text>
-            <Text style={styles.userName}>{user?.fullName || 'Resident'}</Text>
+            <Text style={styles.brandName}>EcoPulse</Text>
+            <Text style={styles.brandSubtitle}>Guarding Pune's Environment</Text>
           </View>
-          <TouchableOpacity onPress={handleLogout} style={styles.logoutBadge}>
-            <Text style={styles.logoutText}>Sign Out</Text>
-          </TouchableOpacity>
         </View>
 
-        {/* Vital Metrics Grid (EcoPoints & Streak) */}
-        <View style={styles.metricsGrid}>
-          {/* EcoPoints Balance Card */}
+        <View style={styles.headerActions}>
           <TouchableOpacity
-            style={styles.metricCard}
-            onPress={() => router.push('/(resident)/points')}
-            activeOpacity={0.8}
+            style={styles.iconCircle}
+            onPress={() => router.push('/(resident)/activity')}
+            activeOpacity={0.7}
           >
-            <View style={styles.metricLabelRow}>
-              <Text style={styles.metricLabel}>EcoPoints</Text>
-              <Text style={styles.metricIcon}>⭐</Text>
-            </View>
-            <Text style={styles.metricValue}>{pointBalance?.toLocaleString() ?? 0}</Text>
-            <Text style={styles.metricSub}>Auditable balance</Text>
+            <Ionicons name="notifications-outline" size={20} color={theme.colors.forest} />
+            <View style={styles.notifDot} />
           </TouchableOpacity>
 
-          {/* Streak Card */}
-          <View style={styles.metricCard}>
-            <View style={styles.metricLabelRow}>
-              <Text style={styles.metricLabel}>Daily Streak</Text>
-              <Text style={styles.metricIcon}>🔥</Text>
+          <TouchableOpacity
+            style={styles.avatarCircle}
+            onPress={() => router.push('/(resident)/profile')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.avatarInitial}>{userInitial}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={handleRefresh}
+            colors={[theme.colors.primary]}
+          />
+        }
+      >
+        {/* 2. Environmental Campaign Hero Card */}
+        <View style={styles.heroCard}>
+          <View style={styles.heroOverlay}>
+            <View style={styles.heroTagPill}>
+              <Text style={styles.heroTagText}>KEEP PUNE CLEAN</Text>
             </View>
-            <Text style={styles.metricValue}>{currentStreak ?? 0} days</Text>
-            <Text style={styles.metricSub}>Active habit</Text>
+            <Text style={styles.heroTitle}>A cleaner future starts with you</Text>
+            <Text style={styles.heroDescription}>
+              Report waste, protect our environment, and help build a better community.
+            </Text>
           </View>
         </View>
 
-        {/* Quick Report Action Banner */}
+        {/* 3. Prominent "Report Waste" Card */}
         <TouchableOpacity
-          style={styles.reportActionBanner}
-          onPress={() => router.push('/(resident)/report' as any)}
-          activeOpacity={0.85}
+          style={styles.reportActionCard}
+          onPress={() => router.push('/(resident)/report')}
+          activeOpacity={0.9}
         >
-          <View style={styles.reportActionLeft}>
-            <Text style={styles.reportActionIcon}>🚨</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.reportActionTitle}>Report an Issue / Hotspot</Text>
-              <Text style={styles.reportActionSub}>
-                Upload geo-tagged evidence to earn +20 EcoPoints upon maintainer verification
+          <View style={styles.reportCardLeft}>
+            <View style={styles.phoneIconWrap}>
+              <Ionicons name="camera" size={24} color={theme.colors.primary} />
+            </View>
+            <View style={styles.reportCardTextWrap}>
+              <Text style={styles.reportCardTitle}>Report Waste</Text>
+              <Text style={styles.reportCardDesc}>
+                See waste? Take a photo and report it. It only takes a few seconds.
               </Text>
             </View>
           </View>
-          <Text style={styles.reportActionChevron}>→</Text>
+
+          <View style={styles.actionArrowBtn}>
+            <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
+          </View>
         </TouchableOpacity>
 
-        {/* Monthly Leaderboard Banner */}
-        <TouchableOpacity
-          style={styles.leaderboardBanner}
-          onPress={() => router.push('/(resident)/leaderboard')}
-          activeOpacity={0.85}
-        >
-          <View style={styles.leaderboardBannerLeft}>
-            <View style={styles.leaderboardIconWrap}>
-              <Text style={styles.leaderboardIcon}>🏆</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <View style={styles.leaderboardBadgeRow}>
-                <Text style={styles.leaderboardBadge}>MONTHLY CYCLE</Text>
-                <Text style={styles.leaderboardSubBadge}>Refreshes 1st of month</Text>
-              </View>
-              <Text style={styles.leaderboardTitle}>Civic Impact Leaderboard</Text>
-              <Text style={styles.leaderboardDesc}>
-                View real-time monthly rankings & community champion standings
-              </Text>
-            </View>
+        {/* 4. "Your Impact" Section */}
+        <View style={styles.sectionHeaderRow}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="leaf-outline" size={18} color={theme.colors.primary} />
+            <Text style={styles.sectionTitle}>Your Impact</Text>
           </View>
-          <Text style={styles.leaderboardChevron}>→</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => router.push('/(resident)/impact')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.viewMoreText}>View more ›</Text>
+          </TouchableOpacity>
+        </View>
 
-        {/* Community Progress Card */}
-        <View style={styles.sectionCard}>
-
-          <View style={styles.sectionHeaderRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.sectionSuper}>COMMUNITY</Text>
-              <Text style={styles.communityName}>
-                {community?.name || 'No Community Joined'}
-              </Text>
-            </View>
-            {community ? (
-              <TouchableOpacity
-                onPress={() => router.push('/(resident)/community')}
-                style={styles.viewBadge}
-              >
-                <Text style={styles.viewBadgeText}>Details →</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                onPress={() => router.push('/(resident)/community')}
-                style={styles.joinBadge}
-              >
-                <Text style={styles.joinBadgeText}>Join Community</Text>
-              </TouchableOpacity>
-            )}
+        <View style={styles.impactGrid}>
+          {/* Card 1: Reports */}
+          <View style={[styles.impactCard, { backgroundColor: theme.colors.impact.reportsBg }]}>
+            <Ionicons
+              name="document-text-outline"
+              size={20}
+              color={theme.colors.impact.reportsIcon}
+            />
+            <Text style={[styles.impactValue, { color: theme.colors.impact.reportsText }]}>
+              {impact.reportsCount}
+            </Text>
+            <Text style={[styles.impactLabel, { color: theme.colors.impact.reportsText }]}>
+              Reports
+            </Text>
           </View>
 
-          {community && (
-            <View style={styles.progressContainer}>
-              <View style={styles.progressLabelRow}>
-                <Text style={styles.progressLabel}>Community Progress</Text>
-                <Text style={styles.progressPercent}>{community.currentProgress}%</Text>
-              </View>
-              <View style={styles.progressBarTrack}>
-                <View
-                  style={[
-                    styles.progressBarFill,
-                    { width: `${Math.min(community.currentProgress, 100)}%` },
-                  ]}
-                />
-              </View>
-            </View>
+          {/* Card 2: Verified */}
+          <View style={[styles.impactCard, { backgroundColor: theme.colors.impact.verifiedBg }]}>
+            <Ionicons
+              name="shield-checkmark-outline"
+              size={20}
+              color={theme.colors.impact.verifiedIcon}
+            />
+            <Text style={[styles.impactValue, { color: theme.colors.impact.verifiedText }]}>
+              {impact.verifiedCount}
+            </Text>
+            <Text style={[styles.impactLabel, { color: theme.colors.impact.verifiedText }]}>
+              Verified
+            </Text>
+          </View>
+
+          {/* Card 3: Resolved */}
+          <View style={[styles.impactCard, { backgroundColor: theme.colors.impact.resolvedBg }]}>
+            <Ionicons
+              name="leaf-outline"
+              size={20}
+              color={theme.colors.impact.resolvedIcon}
+            />
+            <Text style={[styles.impactValue, { color: theme.colors.impact.resolvedText }]}>
+              {impact.resolvedCount}
+            </Text>
+            <Text style={[styles.impactLabel, { color: theme.colors.impact.resolvedText }]}>
+              Resolved
+            </Text>
+          </View>
+
+          {/* Card 4: Eco Points */}
+          <View style={[styles.impactCard, { backgroundColor: theme.colors.impact.pointsBg }]}>
+            <Ionicons
+              name="star-outline"
+              size={20}
+              color={theme.colors.impact.pointsIcon}
+            />
+            <Text style={[styles.impactValue, { color: theme.colors.impact.pointsText }]}>
+              {impact.pointsBalance}
+            </Text>
+            <Text style={[styles.impactLabel, { color: theme.colors.impact.pointsText }]}>
+              Eco Points
+            </Text>
+          </View>
+        </View>
+
+        {/* 5. "Recent Reports" Section */}
+        <View style={[styles.sectionHeaderRow, { marginTop: theme.spacing.lg }]}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="time-outline" size={18} color={theme.colors.primary} />
+            <Text style={styles.sectionTitle}>Recent Reports</Text>
+          </View>
+          {recentReports.length > 0 && (
+            <TouchableOpacity
+              onPress={() => router.push('/(resident)/reports')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.viewMoreText}>See all ›</Text>
+            </TouchableOpacity>
           )}
         </View>
 
-
-        {/* Recent Activity Feed */}
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionSuper}>RECENT ACTIVITY</Text>
-            <TouchableOpacity onPress={() => router.push('/(resident)/activity')}>
-              <Text style={styles.viewAllLink}>History →</Text>
+        {isLoading ? (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator size="small" color={theme.colors.primary} />
+            <Text style={styles.loadingText}>Loading reports...</Text>
+          </View>
+        ) : recentReports.length === 0 ? (
+          /* Empty state matching Screenshot 4 */
+          <View style={styles.emptyCard}>
+            <View style={styles.emptyIconWrap}>
+              <Ionicons name="search-outline" size={32} color={theme.colors.primary} />
+            </View>
+            <Text style={styles.emptyTitle}>No reports yet</Text>
+            <Text style={styles.emptySubtitle}>
+              See waste? Take a photo and help keep Pune clean.
+            </Text>
+            <TouchableOpacity
+              style={styles.emptyReportBtn}
+              onPress={() => router.push('/(resident)/report')}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.emptyReportBtnText}>Report Waste</Text>
             </TouchableOpacity>
           </View>
+        ) : (
+          /* List of recent reports */
+          <View style={styles.reportsList}>
+            {recentReports.map((report) => {
+              const badge = getStatusBadge(report.status);
+              const evidenceThumb = report.evidence?.[0]?.mediaUrl;
 
-          {recentActivity && recentActivity.length > 0 ? (
-            recentActivity.map((item) => (
-              <View key={item.id} style={styles.activityItem}>
-                <View style={styles.activityIconBox}>
-                  <Text style={styles.activityItemIcon}>
-                    {item.points && item.points > 0 ? '🌿' : '📋'}
-                  </Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.activityTitle}>{item.title}</Text>
-                  <Text style={styles.activityDesc}>{item.description}</Text>
-                </View>
-                {item.points && (
-                  <Text style={styles.activityPoints}>
-                    {item.points > 0 ? `+${item.points}` : item.points}
-                  </Text>
-                )}
-              </View>
-            ))
-          ) : (
-            <Text style={styles.emptyText}>No activity recorded yet.</Text>
-          )}
-        </View>
+              return (
+                <TouchableOpacity
+                  key={report.id}
+                  style={styles.reportRowCard}
+                  onPress={() => router.push(`/(resident)/report/${report.id}` as any)}
+                  activeOpacity={0.85}
+                >
+                  {/* Square thumbnail image */}
+                  <View style={styles.thumbWrap}>
+                    {evidenceThumb ? (
+                      <Image source={{ uri: evidenceThumb }} style={styles.thumbImage} />
+                    ) : (
+                      <View style={styles.thumbPlaceholder}>
+                        <Ionicons name="trash-bin-outline" size={24} color={theme.colors.textTertiary} />
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Details column */}
+                  <View style={styles.reportInfoCol}>
+                    <View style={styles.titleStatusRow}>
+                      <Text style={styles.reportRowTitle} numberOfLines={1}>
+                        {report.title || 'Waste report'}
+                      </Text>
+                    </View>
+
+                    {/* Status Pill Badge */}
+                    <View style={[styles.statusBadge, { backgroundColor: badge.bg }]}>
+                      <Ionicons name={badge.icon as any} size={11} color={badge.text} style={{ marginRight: 4 }} />
+                      <Text style={[styles.statusBadgeText, { color: badge.text }]}>
+                        {badge.label}
+                      </Text>
+                    </View>
+
+                    {/* Location */}
+                    <View style={styles.metaRow}>
+                      <Ionicons name="location-outline" size={13} color={theme.colors.textSecondary} />
+                      <Text style={styles.metaText} numberOfLines={1}>
+                        {report.locationAddress || 'Pune Municipal Corporation'}
+                      </Text>
+                    </View>
+
+                    {/* Date */}
+                    <View style={styles.metaRow}>
+                      <Ionicons name="calendar-outline" size={13} color={theme.colors.textSecondary} />
+                      <Text style={styles.metaText}>{formatReportDate(report.createdAt)}</Text>
+                    </View>
+                  </View>
+
+                  <Ionicons name="chevron-forward" size={18} color={theme.colors.textTertiary} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+
+        {/* Bottom spacing */}
+        <View style={{ height: 32 }} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: theme.colors.background,
   },
-  centerContainer: {
-    flex: 1,
+  topHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.md,
+    backgroundColor: theme.colors.background,
+  },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  logoBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: theme.colors.primarySubtle,
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    padding: spacing.xl,
-  },
-  loadingText: {
-    ...typography.body,
-    color: colors.neutral[600],
-    marginTop: spacing.md,
-  },
-  errorTitle: {
-    ...typography.h2,
-    color: colors.status.error,
-    marginBottom: spacing.xs,
-  },
-  errorSub: {
-    ...typography.body,
-    color: colors.neutral[600],
-    textAlign: 'center',
-    marginBottom: spacing.lg,
-  },
-  retryButton: {
-    backgroundColor: colors.primary[900],
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-    borderRadius: radius.md,
-  },
-  retryButtonText: {
-    ...typography.bodyBold,
-    color: colors.surface.white,
-  },
-  scroll: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    gap: spacing.lg,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.xs,
-  },
-  greeting: {
-    ...typography.caption,
-    color: colors.neutral[500],
-  },
-  userName: {
-    ...typography.h1,
-    fontSize: 24,
-    color: colors.neutral[900],
-  },
-  logoutBadge: {
-    backgroundColor: colors.neutral[200],
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.full,
-  },
-  logoutText: {
-    ...typography.caption,
-    color: colors.neutral[700],
-    fontWeight: '600',
-  },
-  metricsGrid: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  metricCard: {
-    flex: 1,
-    backgroundColor: colors.surface.white,
-    borderColor: colors.neutral[200],
     borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: spacing.base,
+    borderColor: '#C6F6D5',
   },
-  metricLabelRow: {
+  brandName: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: theme.colors.forest,
+    letterSpacing: -0.3,
+  },
+  brandSubtitle: {
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+    fontWeight: '500',
+  },
+  headerActions: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.xs,
+    gap: 10,
   },
-  metricLabel: {
-    ...typography.caption,
-    color: colors.neutral[500],
-    fontWeight: '600',
-    textTransform: 'uppercase',
+  iconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
   },
-  metricIcon: {
+  notifDot: {
+    position: 'absolute',
+    top: 7,
+    right: 8,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: theme.colors.primary,
+  },
+  avatarCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.colors.primarySubtle,
+    borderWidth: 1.5,
+    borderColor: theme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitial: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: theme.colors.primary,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.sm,
+  },
+  heroCard: {
+    borderRadius: theme.radius.xl,
+    backgroundColor: theme.colors.forest,
+    marginBottom: theme.spacing.base,
+    overflow: 'hidden',
+    ...theme.shadows.card,
+  },
+  heroOverlay: {
+    padding: theme.spacing.lg,
+    backgroundColor: '#0F3E30',
+  },
+  heroTagPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  heroTagText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#86EFAC',
+    letterSpacing: 0.8,
+  },
+  heroTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginBottom: 6,
+    letterSpacing: -0.3,
+    lineHeight: 26,
+  },
+  heroDescription: {
+    fontSize: 13,
+    color: '#D1FAE5',
+    lineHeight: 18,
+  },
+  reportActionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#EDF7F2',
+    borderRadius: theme.radius.xl,
+    padding: theme.spacing.base,
+    marginBottom: theme.spacing.lg,
+    borderWidth: 1,
+    borderColor: '#CDE5D8',
+    ...theme.shadows.card,
+  },
+  reportCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    marginRight: 10,
+  },
+  phoneIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#C6F6D5',
+  },
+  reportCardTextWrap: {
+    flex: 1,
+  },
+  reportCardTitle: {
     fontSize: 16,
-  },
-  metricValue: {
-    ...typography.metric,
-    color: colors.primary[900],
+    fontWeight: '800',
+    color: theme.colors.forest,
     marginBottom: 2,
   },
-  metricSub: {
-    ...typography.caption,
-    color: colors.neutral[400],
+  reportCardDesc: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+    lineHeight: 16,
   },
-  sectionCard: {
-    backgroundColor: colors.surface.white,
-    borderColor: colors.neutral[200],
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: spacing.base,
+  actionArrowBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: theme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sectionHeaderRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  sectionSuper: {
-    ...typography.caption,
-    color: colors.neutral[400],
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  communityName: {
-    ...typography.h3,
-    color: colors.neutral[900],
-    marginTop: 2,
-  },
-  viewBadge: {
-    backgroundColor: colors.primary[50],
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.full,
-  },
-  viewBadgeText: {
-    ...typography.caption,
-    color: colors.primary[800],
-    fontWeight: '700',
-  },
-  joinBadge: {
-    backgroundColor: colors.primary[900],
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.full,
-  },
-  joinBadgeText: {
-    ...typography.caption,
-    color: colors.surface.white,
-    fontWeight: '700',
-  },
-  progressContainer: {
-    marginTop: spacing.xs,
-  },
-  progressLabelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.xs,
-  },
-  progressLabel: {
-    ...typography.caption,
-    color: colors.neutral[600],
-  },
-  progressPercent: {
-    ...typography.caption,
-    fontWeight: '700',
-    color: colors.primary[800],
-  },
-  progressBarTrack: {
-    height: 8,
-    backgroundColor: colors.neutral[100],
-    borderRadius: radius.full,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: colors.primary[500],
-    borderRadius: radius.full,
-  },
-  viewAllLink: {
-    ...typography.caption,
-    color: colors.primary[700],
-    fontWeight: '600',
-  },
-  activeMissionBox: {
-    backgroundColor: colors.neutral[50],
-    borderColor: colors.neutral[200],
-    borderWidth: 1,
-    borderRadius: radius.md,
-    padding: spacing.md,
-  },
-  missionTitleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.xs,
-  },
-  missionTitle: {
-    ...typography.bodyBold,
-    color: colors.neutral[900],
-    flex: 1,
-  },
-  rewardPill: {
-    backgroundColor: colors.accent.pointsBg,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: radius.full,
-    marginLeft: spacing.sm,
-  },
-  rewardPillText: {
-    ...typography.caption,
-    color: colors.accent.points,
-    fontWeight: '700',
-  },
-  missionDesc: {
-    ...typography.caption,
-    color: colors.neutral[600],
-    lineHeight: 18,
-    marginBottom: spacing.sm,
-  },
-  missionStatusRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderTopColor: colors.neutral[200],
-    borderTopWidth: 1,
-    paddingTop: spacing.xs,
-  },
-  missionStatus: {
-    ...typography.caption,
-    color: colors.neutral[500],
-  },
-  tapAction: {
-    ...typography.caption,
-    color: colors.primary[700],
-    fontWeight: '600',
-  },
-  activityItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    borderBottomColor: colors.neutral[100],
-    borderBottomWidth: 1,
-    gap: spacing.md,
-  },
-  activityIconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.full,
-    backgroundColor: colors.primary[50],
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  activityItemIcon: {
-    fontSize: 16,
-  },
-  activityTitle: {
-    ...typography.bodyBold,
-    fontSize: 14,
-    color: colors.neutral[900],
-  },
-  activityDesc: {
-    ...typography.caption,
-    color: colors.neutral[500],
-  },
-  activityPoints: {
-    ...typography.bodyBold,
-    color: colors.primary[600],
-  },
-  emptyText: {
-    ...typography.caption,
-    color: colors.neutral[500],
-    fontStyle: 'italic',
-  },
-  reportActionBanner: {
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.surface.card,
-    borderRadius: radius.lg,
-    padding: spacing.base,
-    marginBottom: spacing.base,
-    borderWidth: 1.5,
-    borderColor: colors.primary[600],
-    shadowColor: colors.primary[900],
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
+    marginBottom: theme.spacing.md,
   },
-  reportActionLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-    marginRight: 8,
-  },
-  reportActionIcon: {
-    fontSize: 26,
-  },
-  reportActionTitle: {
-    ...typography.bodyBold,
-    color: colors.neutral[900],
-    fontSize: 14,
-  },
-  reportActionSub: {
-    fontSize: 11,
-    color: colors.neutral[600],
-    marginTop: 2,
-    lineHeight: 15,
-  },
-  reportActionChevron: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.primary[700],
-  },
-  leaderboardBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#F0FDF4',
-    borderRadius: radius.lg,
-    padding: spacing.base,
-    marginBottom: spacing.base,
-    borderWidth: 1.5,
-    borderColor: '#10B981',
-    shadowColor: '#059669',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  leaderboardBannerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-    marginRight: 8,
-  },
-  leaderboardIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#DCFCE7',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  leaderboardIcon: {
-    fontSize: 22,
-  },
-  leaderboardBadgeRow: {
+  sectionTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: theme.colors.forest,
+    letterSpacing: -0.2,
+  },
+  viewMoreText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.colors.primary,
+  },
+  impactGrid: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: theme.spacing.base,
+  },
+  impactCard: {
+    flex: 1,
+    borderRadius: theme.radius.lg,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.03)',
+  },
+  impactValue: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginTop: 6,
     marginBottom: 2,
   },
-  leaderboardBadge: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#059669',
-    letterSpacing: 0.5,
-  },
-  leaderboardSubBadge: {
-    fontSize: 9,
-    fontWeight: '600',
-    color: '#D97706',
-  },
-  leaderboardTitle: {
-    ...typography.bodyBold,
-    color: colors.neutral[900],
-    fontSize: 14,
-  },
-  leaderboardDesc: {
+  impactLabel: {
     fontSize: 11,
-    color: colors.neutral[600],
-    marginTop: 2,
-    lineHeight: 15,
+    fontWeight: '600',
   },
-  leaderboardChevron: {
-    fontSize: 20,
+  emptyCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: theme.radius.xl,
+    padding: theme.spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    ...theme.shadows.card,
+  },
+  emptyIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: theme.colors.primarySubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: theme.colors.forest,
+    marginBottom: 4,
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 16,
+    lineHeight: 18,
+  },
+  emptyReportBtn: {
+    backgroundColor: theme.colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: theme.radius.full,
+  },
+  emptyReportBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
     fontWeight: '700',
-    color: '#059669',
+  },
+  reportsList: {
+    gap: 12,
+  },
+  reportRowCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: theme.radius.lg,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    ...theme.shadows.card,
+  },
+  thumbWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: theme.radius.md,
+    overflow: 'hidden',
+    backgroundColor: '#F1F5F9',
+    marginRight: 12,
+  },
+  thumbImage: {
+    width: '100%',
+    height: '100%',
+  },
+  thumbPlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reportInfoCol: {
+    flex: 1,
+    marginRight: 8,
+  },
+  titleStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  reportRowTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: theme.colors.forest,
+  },
+  statusBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginBottom: 6,
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  metaText: {
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+    flex: 1,
+  },
+  loadingBox: {
+    padding: 24,
+    alignItems: 'center',
+    gap: 8,
+  },
+  loadingText: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
   },
 });
-

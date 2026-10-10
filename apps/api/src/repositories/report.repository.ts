@@ -1,7 +1,7 @@
-import type { Evidence, Report, ReportCategory, ReportStatus, VerificationStatus } from '@ecopulse/types';
+import type { Evidence, Report, ReportAIFindings, ReportCategory, ReportStatus, VerificationStatus } from '@ecopulse/types';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { evidence, reports, users } from '../db/schema.js';
+import { aiObservations, environmentalEvents, evidence, reports, users } from '../db/schema.js';
 import { reviewRepository } from './review.repository.js';
 
 export interface CreateReportInput {
@@ -67,10 +67,82 @@ export class ReportRepository {
 
     const reportEvidence = await this.listEvidence(id);
     const reportReviews = await reviewRepository.list({ entityType: 'REPORT', entityId: id });
+
+    // Fetch real environmental event and AI observation if available
+    const [envEvent] = await db
+      .select()
+      .from(environmentalEvents)
+      .where(eq(environmentalEvents.reportId, id))
+      .limit(1);
+
+    let aiObs: any = null;
+    let aiFindings: ReportAIFindings | undefined;
+
+    if (envEvent) {
+      const [obs] = await db
+        .select()
+        .from(aiObservations)
+        .where(eq(aiObservations.eventId, envEvent.id))
+        .limit(1);
+      aiObs = obs || null;
+
+      if (aiObs) {
+        const rawMeta = aiObs.rawMetadata as any;
+        const gemini = rawMeta?.geminiAnalysis;
+        const wasteDetected =
+          gemini?.wasteDetected !== undefined
+            ? Boolean(gemini.wasteDetected)
+            : aiObs.wasteType !== 'NO_WASTE';
+
+        aiFindings = {
+          wasteDetected,
+          wasteType: aiObs.wasteType,
+          secondaryWasteTypes: Array.isArray(aiObs.secondaryWasteTypes)
+            ? (aiObs.secondaryWasteTypes as string[])
+            : [],
+          severity: aiObs.severity as any,
+          confidence: aiObs.confidence,
+          estimatedVolume: aiObs.estimatedVolume,
+          environmentalRisk: aiObs.environmentalRisk,
+          publicSafetyRisk: aiObs.publicSafetyRisk,
+          recommendedAction: aiObs.recommendedAction,
+          modelProvider: aiObs.modelProvider,
+          modelName: aiObs.modelName,
+          requiresHumanReview: Boolean(
+            gemini?.requiresHumanReview || envEvent.status === 'REVIEW_REQUIRED'
+          ),
+          explanation:
+            gemini?.reasoning ||
+            gemini?.recommendedAction ||
+            aiObs.environmentalRisk ||
+            null,
+        };
+      }
+    }
+
+    if (!aiFindings && reportReviews.length > 0) {
+      const aiReview = reportReviews.find((r) => r.aiProvider || r.detectedIssue);
+      if (aiReview) {
+        aiFindings = {
+          wasteDetected: aiReview.detectedIssue !== 'NO_WASTE',
+          wasteType: aiReview.detectedIssue,
+          secondaryWasteTypes: aiReview.detectedObjects,
+          severity: aiReview.severity,
+          confidence: aiReview.aiConfidence ? aiReview.aiConfidence / 100 : undefined,
+          recommendedAction: aiReview.recommendation,
+          modelProvider: aiReview.aiProvider,
+          modelName: aiReview.aiModel,
+          explanation: aiReview.reason || aiReview.recommendation,
+        };
+      }
+    }
+
     return {
       ...this.mapToReport(row.report),
       evidence: reportEvidence,
       reviews: reportReviews,
+      aiObservation: aiObs,
+      aiFindings,
       user: row.user ?? undefined,
     };
   }
@@ -143,12 +215,31 @@ export class ReportRepository {
       reviewsByReportId.set(rev.entityId, list);
     }
 
-    return rows.map((r) => ({
-      ...this.mapToReport(r.report),
-      user: r.user ?? undefined,
-      evidence: evidenceByReportId.get(r.report.id) || [],
-      reviews: reviewsByReportId.get(r.report.id) || [],
-    }));
+    return rows.map((r) => {
+      const revs = reviewsByReportId.get(r.report.id) || [];
+      const aiRev = revs.find((rev) => rev.aiProvider || rev.detectedIssue);
+      let aiFindings: ReportAIFindings | undefined;
+      if (aiRev) {
+        aiFindings = {
+          wasteDetected: aiRev.detectedIssue !== 'NO_WASTE',
+          wasteType: aiRev.detectedIssue,
+          secondaryWasteTypes: aiRev.detectedObjects,
+          severity: aiRev.severity,
+          confidence: aiRev.aiConfidence ? aiRev.aiConfidence / 100 : undefined,
+          recommendedAction: aiRev.recommendation,
+          modelProvider: aiRev.aiProvider,
+          modelName: aiRev.aiModel,
+          explanation: aiRev.reason || aiRev.recommendation,
+        };
+      }
+      return {
+        ...this.mapToReport(r.report),
+        user: r.user ?? undefined,
+        evidence: evidenceByReportId.get(r.report.id) || [],
+        reviews: revs,
+        aiFindings,
+      };
+    });
   }
 
   async updateStatus(id: string, status: ReportStatus): Promise<Report | null> {

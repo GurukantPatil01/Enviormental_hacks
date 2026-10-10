@@ -362,11 +362,33 @@ export type ReportCategory =
 export type ReportStatus =
   | 'DRAFT'
   | 'SUBMITTED'
+  | 'PENDING'
+  | 'PROCESSING'
+  | 'IN_PROGRESS'
   | 'UNDER_REVIEW'
+  | 'REVIEW_REQUIRED'
+  | 'FLAGGED_FOR_REVIEW'
+  | 'ANALYZED'
   | 'VERIFIED'
   | 'REJECTED'
   | 'RESOLVED'
   | 'CLOSED';
+
+export interface ReportAIFindings {
+  wasteDetected: boolean;
+  wasteType?: string | null;
+  secondaryWasteTypes?: string[] | null;
+  severity?: ObservationSeverity | null;
+  confidence?: number | null;
+  estimatedVolume?: string | null;
+  environmentalRisk?: string | null;
+  publicSafetyRisk?: string | null;
+  recommendedAction?: string | null;
+  modelProvider?: string | null;
+  modelName?: string | null;
+  requiresHumanReview?: boolean;
+  explanation?: string | null;
+}
 
 export interface Report {
   id: string;
@@ -383,6 +405,8 @@ export interface Report {
   evidence?: Evidence[];
   reviews?: HumanReview[];
   user?: Pick<User, 'id' | 'fullName' | 'email'>;
+  aiObservation?: any;
+  aiFindings?: ReportAIFindings;
   createdAt: string;
   updatedAt: string;
 }
@@ -658,6 +682,13 @@ export interface AuthResponse {
   user: User;
 }
 
+export interface UserImpactStats {
+  reportsCount: number;
+  verifiedCount: number;
+  resolvedCount: number;
+  pointsBalance: number;
+}
+
 export interface HomeDashboardData {
   user: User;
   community: Community | null;
@@ -667,6 +698,8 @@ export interface HomeDashboardData {
   activeMission: Mission | null;
   recentActivity: ActivityItem[];
   nextMilestone?: CommunityMilestone | null;
+  impactStats?: UserImpactStats;
+  recentReports?: Report[];
 }
 
 export interface MissionCompleteResponse {
