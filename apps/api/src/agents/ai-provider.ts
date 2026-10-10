@@ -209,14 +209,7 @@ export function getAIProvider(): VisionAIProvider {
     return gemini;
   }
   if (provider === 'bedrock') {
-    const bedrock = new BedrockVisionProvider();
-    if (!bedrock.hasCredentials() && process.env.NODE_ENV !== 'production') {
-      console.warn(
-        '[AIProvider] VISION_PROVIDER=bedrock but AWS credentials are not set. Using MockVisionProvider fallback in non-production.'
-      );
-      return new MockVisionProvider();
-    }
-    return bedrock;
+    return new BedrockVisionProvider();
   }
   if (provider === 'local') {
     return new LocalVisionProvider();

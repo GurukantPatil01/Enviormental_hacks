@@ -15,8 +15,8 @@
     "s3:check": "pnpm --filter @ecopulse/api s3:check",
     "s3:sync": "pnpm --filter @ecopulse/api exec tsx ../../scripts/sync-to-s3.ts",
     "db:clear-reports": "pnpm --filter @ecopulse/api exec tsx ../../scripts/clear-reports.ts",
-    "seed:environmental": "pnpm --filter @ecopulse/api exec tsx ../../scripts/seed/environmental-demo.ts",
-    "eval:vision": "pnpm --filter @ecopulse/api exec tsx ../../scripts/evaluation/evaluate-vision.ts"
+    "eval:vision": "pnpm --filter @ecopulse/api exec tsx ../../scripts/evaluation/evaluate-vision.ts",
+    "verify:bedrock": "pnpm --filter @ecopulse/api exec tsx ../../scripts/verify-bedrock-vision.ts"
   },
   "devDependencies": {
     "turbo": "^2.4.4",

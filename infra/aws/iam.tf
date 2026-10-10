@@ -56,13 +56,17 @@ resource "aws_iam_policy" "lambda_ecopulse_policy" {
         ]
         Resource = "*"
       },
-      # Optional Bedrock Invocation
+      # Bedrock Multimodal Vision Invocation (Least Privilege)
       {
         Effect = "Allow"
         Action = [
-          "bedrock:InvokeModel"
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream"
         ]
-        Resource = "arn:aws:bedrock:${var.aws_region}::foundation-model/*"
+        Resource = [
+          "arn:aws:bedrock:${var.aws_region}::foundation-model/*",
+          "arn:aws:bedrock:${var.aws_region}:*:inference-profile/*"
+        ]
       }
     ]
   })
@@ -71,4 +75,28 @@ resource "aws_iam_policy" "lambda_ecopulse_policy" {
 resource "aws_iam_role_policy_attachment" "lambda_ecopulse_attach" {
   role       = aws_iam_role.lambda_exec_role.name
   policy_arn = aws_iam_policy.lambda_ecopulse_policy.arn
+}
+
+# Standalone Least-Privilege IAM Policy for ecopulse-s3-user / backend credentials
+resource "aws_iam_policy" "backend_bedrock_vision_policy" {
+  name        = "ecopulse-backend-bedrock-vision-${var.environment}"
+  description = "Least privilege Bedrock vision inference policy for EcoPulse backend workers and ecopulse-s3-user"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowBedrockMultimodalVisionInference"
+        Effect = "Allow"
+        Action = [
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream"
+        ]
+        Resource = [
+          "arn:aws:bedrock:${var.aws_region}::foundation-model/*",
+          "arn:aws:bedrock:${var.aws_region}:*:inference-profile/*"
+        ]
+      }
+    ]
+  })
 }

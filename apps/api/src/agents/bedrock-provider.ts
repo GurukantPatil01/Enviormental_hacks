@@ -28,6 +28,34 @@ export interface BedrockVisionOptions {
   };
 }
 
+export interface BedrockInferenceMetrics {
+  latencyMs: number;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+}
+
+export function calculateBedrockInferenceCost(modelId: string, inputTokens: number, outputTokens: number): number {
+  const norm = (modelId || '').toLowerCase();
+  if (norm.includes('claude-3-5-sonnet') || norm.includes('sonnet')) {
+    // Anthropic Claude 3.5 Sonnet: $3.00/1M input, $15.00/1M output
+    return Number(((inputTokens * 0.000003) + (outputTokens * 0.000015)).toFixed(6));
+  }
+  if (norm.includes('nova-pro')) {
+    // Amazon Nova Pro: $0.80/1M input, $3.20/1M output
+    return Number(((inputTokens * 0.0000008) + (outputTokens * 0.0000032)).toFixed(6));
+  }
+  if (norm.includes('nova-lite')) {
+    // Amazon Nova Lite: $0.06/1M input, $0.24/1M output
+    return Number(((inputTokens * 0.00000006) + (outputTokens * 0.00000024)).toFixed(6));
+  }
+  if (norm.includes('haiku')) {
+    // Anthropic Claude 3 Haiku: $0.25/1M input, $1.25/1M output
+    return Number(((inputTokens * 0.00000025) + (outputTokens * 0.00000125)).toFixed(6));
+  }
+  return Number(((inputTokens * 0.000003) + (outputTokens * 0.000015)).toFixed(6));
+}
+
 /**
  * Enterprise AWS Bedrock Multimodal Vision Provider.
  * Sends real image bytes to Amazon Bedrock foundation models (Anthropic Claude 3 / 3.5, Amazon Nova, etc.)
@@ -41,6 +69,7 @@ export class BedrockVisionProvider implements VisionAIProvider {
   private maxRetries: number;
   private mockClient: any;
   private hasExplicitCredentials: boolean = false;
+  private lastMetrics: BedrockInferenceMetrics = { latencyMs: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 };
 
   constructor(options?: BedrockVisionOptions) {
     this.region =
@@ -283,6 +312,11 @@ Respond ONLY with valid JSON. No markdown code blocks, no preambles, no trailing
           if (Array.isArray(content) && content.length > 0) {
             const textBlock = content.find((b) => b.text);
             if (textBlock?.text) {
+              const inputTokens = (response as any).usage?.inputTokens || Math.ceil(buffer.length / 750);
+              const outputTokens = (response as any).usage?.outputTokens || 250;
+              const latencyMs = (response as any).metrics?.latencyMs || 0;
+              const costUsd = calculateBedrockInferenceCost(this.modelName, inputTokens, outputTokens);
+              this.lastMetrics = { latencyMs, inputTokens, outputTokens, costUsd };
               return textBlock.text;
             }
           }
@@ -332,6 +366,10 @@ Respond ONLY with valid JSON. No markdown code blocks, no preambles, no trailing
             const parsed = JSON.parse(rawBody);
             const text = parsed?.content?.[0]?.text;
             if (text) {
+              const inputTokens = parsed.usage?.input_tokens || Math.ceil(buffer.length / 750);
+              const outputTokens = parsed.usage?.output_tokens || 250;
+              const costUsd = calculateBedrockInferenceCost(this.modelName, inputTokens, outputTokens);
+              this.lastMetrics = { latencyMs: 0, inputTokens, outputTokens, costUsd };
               return text;
             }
           }
@@ -435,9 +473,21 @@ Provide strict evidence-grounded JSON analysis distinguishing visible waste, cle
       detectedObjects: analysis.detectedObjects || [],
       model: this.modelName,
       provider: 'BEDROCK',
-      bedrockAnalysis: analysis,
+      bedrockAnalysis: {
+        ...analysis,
+        metrics: {
+          ...this.lastMetrics,
+          latencyMs: durationMs,
+        },
+      },
       requiresHumanReview: analysis.requiresHumanReview,
+      costUsd: this.lastMetrics.costUsd,
+      latencyMs: durationMs,
     } as any;
+  }
+
+  getLastMetrics(): BedrockInferenceMetrics {
+    return this.lastMetrics;
   }
 
   /**
