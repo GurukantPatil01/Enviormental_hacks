@@ -1,6 +1,7 @@
-import { colors, radius, spacing, typography } from '@ecopulse/design-system';
-import type { Reward, RewardCategory, RewardClaim } from '@ecopulse/types';
+import { Ionicons } from '@expo/vector-icons';
+import type { Reward, RewardClaim } from '@ecopulse/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -14,18 +15,21 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { theme } from '../../constants/theme';
 import { api } from '../../lib/api';
 
-const CATEGORIES: { label: string; value: string }[] = [
-  { label: 'All Vouchers', value: 'ALL' },
-  { label: 'Bus (PMPML)', value: 'TRANSIT_PASS' },
-  { label: 'Pune Metro', value: 'METRO_DISCOUNT' },
-  { label: 'Zoo & Parks', value: 'PARKS_AND_RECREATION' },
-  { label: 'Heritage', value: 'MUNICIPAL_TICKET' },
+const CATEGORIES: { label: string; value: string; icon: string }[] = [
+  { label: 'All Vouchers', value: 'ALL', icon: 'grid-outline' },
+  { label: 'Bus (PMPML)', value: 'TRANSIT_PASS', icon: 'bus-outline' },
+  { label: 'Pune Metro', value: 'METRO_DISCOUNT', icon: 'train-outline' },
+  { label: 'Zoo & Parks', value: 'PARKS_AND_RECREATION', icon: 'leaf-outline' },
+  { label: 'Heritage', value: 'MUNICIPAL_TICKET', icon: 'business-outline' },
 ];
 
 export default function RewardsScreen() {
+  const router = useRouter();
   const queryClient = useQueryClient();
+
   const [activeTab, setActiveTab] = useState<'EXPLORE' | 'MY_TICKETS'>('EXPLORE');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [selectedReward, setSelectedReward] = useState<Reward | null>(null);
@@ -64,13 +68,14 @@ export default function RewardsScreen() {
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['me-points'] });
+      queryClient.invalidateQueries({ queryKey: ['home-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['rewards'] });
       queryClient.invalidateQueries({ queryKey: ['my-reward-claims'] });
       setSelectedReward(null);
       setClaimSuccessClaim(result.claim);
     },
     onError: (err: any) => {
-      Alert.alert('Unable to Claim Voucher', err.message || 'Please check your points balance.');
+      Alert.alert('Unable to Redeem Voucher', err.message || 'Please check your points balance.');
     },
   });
 
@@ -85,27 +90,45 @@ export default function RewardsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header & Balance Hero */}
+      {/* Top Header */}
       <View style={styles.header}>
-        <View style={styles.titleRow}>
-          <Text style={styles.title}>Civic Rewards</Text>
-          <View style={styles.verifiedTag}>
-            <Text style={styles.verifiedTagText}>Government Tickets</Text>
+        <View style={styles.headerTopRow}>
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => router.back()}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-back" size={22} color={theme.colors.forest} />
+          </TouchableOpacity>
+
+          <View style={styles.headerTitleWrap}>
+            <Text style={styles.headerTitle}>Redeem EcoPoints</Text>
+            <Text style={styles.headerSubtitle}>Government Tickets & Transit Vouchers</Text>
           </View>
+
+          <View style={{ width: 38 }} />
         </View>
 
-        {/* EcoPoints Balance Card */}
+        {/* EcoPoints Balance Hero Card */}
         <View style={styles.balanceCard}>
           <View style={styles.balanceHeader}>
-            <Text style={styles.balanceLabel}>Available EcoPoints</Text>
+            <View style={styles.balanceTitleRow}>
+              <Ionicons name="star" size={16} color="#F59E0B" style={{ marginRight: 6 }} />
+              <Text style={styles.balanceLabel}>Your Available Points</Text>
+            </View>
             <View style={styles.liveIndicator}>
               <View style={styles.liveDot} />
-              <Text style={styles.liveText}>Immutable Ledger</Text>
+              <Text style={styles.liveText}>Verified Ledger</Text>
             </View>
           </View>
-          <Text style={styles.balanceValue}>{balance.toLocaleString()}</Text>
+
+          <View style={styles.balanceValueRow}>
+            <Text style={styles.balanceValue}>{balance.toLocaleString()}</Text>
+            <Text style={styles.balanceUnit}>EcoPoints</Text>
+          </View>
+
           <Text style={styles.balanceNote}>
-            Earned via verified civic cleanup & recycling. Redeem directly for government transit & municipal tickets.
+            Earned via verified civic cleanup & recycling. Redeem directly for Pune municipal bus passes, metro rides & park tickets.
           </Text>
         </View>
 
@@ -116,777 +139,901 @@ export default function RewardsScreen() {
             onPress={() => setActiveTab('EXPLORE')}
             activeOpacity={0.8}
           >
+            <Ionicons
+              name="ticket-outline"
+              size={15}
+              color={activeTab === 'EXPLORE' ? '#FFFFFF' : theme.colors.textSecondary}
+              style={{ marginRight: 6 }}
+            />
             <Text style={[styles.tabButtonText, activeTab === 'EXPLORE' && styles.tabButtonTextActive]}>
               Explore Coupons
             </Text>
           </TouchableOpacity>
+
           <TouchableOpacity
             style={[styles.tabButton, activeTab === 'MY_TICKETS' && styles.tabButtonActive]}
             onPress={() => setActiveTab('MY_TICKETS')}
             activeOpacity={0.8}
           >
+            <Ionicons
+              name="wallet-outline"
+              size={15}
+              color={activeTab === 'MY_TICKETS' ? '#FFFFFF' : theme.colors.textSecondary}
+              style={{ marginRight: 6 }}
+            />
             <Text style={[styles.tabButtonText, activeTab === 'MY_TICKETS' && styles.tabButtonTextActive]}>
-              My Vouchers ({myClaims.length})
+              My Claimed Tickets ({myClaims.length})
             </Text>
           </TouchableOpacity>
         </View>
       </View>
 
+      {/* Main Content */}
       <ScrollView
-        contentContainerStyle={styles.scroll}
-        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={onRefresh} />}
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={onRefresh}
+            colors={[theme.colors.primary]}
+          />
+        }
       >
         {activeTab === 'EXPLORE' ? (
           <>
-            {/* Category Filter Chips */}
+            {/* Category Filter Pills */}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.categoriesRow}
             >
-              {CATEGORIES.map((cat) => (
-                <TouchableOpacity
-                  key={cat.value}
-                  style={[
-                    styles.categoryChip,
-                    selectedCategory === cat.value && styles.categoryChipActive,
-                  ]}
-                  onPress={() => setSelectedCategory(cat.value)}
-                  activeOpacity={0.7}
-                >
-                  <Text
-                    style={[
-                      styles.categoryChipText,
-                      selectedCategory === cat.value && styles.categoryChipTextActive,
-                    ]}
+              {CATEGORIES.map((cat) => {
+                const isActive = selectedCategory === cat.value;
+                return (
+                  <TouchableOpacity
+                    key={cat.value}
+                    style={[styles.catChip, isActive && styles.catChipActive]}
+                    onPress={() => setSelectedCategory(cat.value)}
+                    activeOpacity={0.8}
                   >
-                    {cat.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Ionicons
+                      name={cat.icon as any}
+                      size={14}
+                      color={isActive ? '#FFFFFF' : theme.colors.forest}
+                      style={{ marginRight: 5 }}
+                    />
+                    <Text style={[styles.catChipText, isActive && styles.catChipTextActive]}>
+                      {cat.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
 
-            {/* Rewards List */}
+            {/* Rewards Cards List */}
             {isRewardsLoading ? (
-              <View style={styles.centerContainer}>
-                <ActivityIndicator size="large" color={colors.primary[600]} />
-                <Text style={styles.loadingText}>Fetching available government coupons...</Text>
+              <View style={styles.loadingBox}>
+                <ActivityIndicator size="large" color={theme.colors.primary} />
+                <Text style={styles.loadingText}>Loading available vouchers...</Text>
               </View>
             ) : rewards.length === 0 ? (
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyTitle}>No Vouchers in this Category</Text>
-                <Text style={styles.emptyText}>Check back soon or select another category above.</Text>
+              <View style={styles.emptyBox}>
+                <Ionicons name="ticket-outline" size={44} color={theme.colors.textTertiary} />
+                <Text style={styles.emptyTitle}>No Vouchers Available</Text>
+                <Text style={styles.emptySub}>
+                  No active discount tickets currently listed in this category.
+                </Text>
               </View>
             ) : (
-              rewards.map((reward) => {
-                const canAfford = balance >= reward.costPoints;
-                return (
-                  <View key={reward.id} style={styles.card}>
-                    {/* Partner Header */}
-                    <View style={styles.cardHeader}>
-                      <View style={styles.partnerInfo}>
-                        <Text style={styles.partnerName}>{reward.partnerName ?? 'Government Partner'}</Text>
-                        <Text style={styles.rewardTitle}>{reward.title}</Text>
-                      </View>
-                      {reward.discountPercent ? (
-                        <View style={styles.discountBadge}>
-                          <Text style={styles.discountBadgeText}>
-                            {reward.discountPercent === 100 ? 'FREE' : `${reward.discountPercent}% OFF`}
+              <View style={styles.rewardsList}>
+                {rewards.map((reward) => {
+                  const canAfford = balance >= reward.costPoints;
+                  const pointsNeeded = reward.costPoints - balance;
+
+                  return (
+                    <View key={reward.id} style={styles.rewardCard}>
+                      <View style={styles.rewardTopRow}>
+                        <View style={styles.partnerTag}>
+                          <Text style={styles.partnerTagText}>
+                            {reward.partnerName || 'Government of Maharashtra'}
                           </Text>
                         </View>
-                      ) : reward.discountAmountInr ? (
-                        <View style={styles.discountBadge}>
-                          <Text style={styles.discountBadgeText}>₹{reward.discountAmountInr} OFF</Text>
+                        <View style={styles.costBadge}>
+                          <Ionicons name="star" size={13} color="#F59E0B" style={{ marginRight: 4 }} />
+                          <Text style={styles.costBadgeText}>{reward.costPoints} pts</Text>
                         </View>
-                      ) : null}
-                    </View>
-
-                    {/* Description */}
-                    <Text style={styles.description}>{reward.description}</Text>
-
-                    {/* How to Redeem preview */}
-                    <View style={styles.instructionsPreview}>
-                      <Text style={styles.instructionsPreviewTitle}>📍 How to use:</Text>
-                      <Text style={styles.instructionsPreviewText}>{reward.redemptionInstructions}</Text>
-                    </View>
-
-                    {/* Footer with Cost & Action */}
-                    <View style={styles.cardFooter}>
-                      <View style={styles.costBadge}>
-                        <Text style={styles.costPoints}>{reward.costPoints} EcoPoints</Text>
-                        <Text style={styles.stockText}>{reward.inventoryRemaining} available</Text>
                       </View>
 
+                      <Text style={styles.rewardTitle}>{reward.title}</Text>
+                      <Text style={styles.rewardDesc}>{reward.description}</Text>
+
+                      <View style={styles.rewardDivider} />
+
+                      <View style={styles.rewardBottomRow}>
+                        <View>
+                          <Text style={styles.discountValueText}>
+                            {reward.discountPercent
+                              ? `${reward.discountPercent}% OFF`
+                              : reward.discountAmountInr
+                              ? `₹${reward.discountAmountInr} OFF`
+                              : 'Special Pass'}
+                          </Text>
+                          <Text style={styles.termsText}>
+                            {reward.terms || 'Instant activation'}
+                          </Text>
+                        </View>
+
+                        <TouchableOpacity
+                          style={[
+                            styles.redeemBtn,
+                            !canAfford && styles.redeemBtnDisabled,
+                          ]}
+                          onPress={() => setSelectedReward(reward)}
+                          disabled={!canAfford}
+                          activeOpacity={0.85}
+                        >
+                          <Text
+                            style={[
+                              styles.redeemBtnText,
+                              !canAfford && styles.redeemBtnTextDisabled,
+                            ]}
+                          >
+                            {canAfford ? 'Redeem Voucher' : `Need ${pointsNeeded} pts`}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </>
+        ) : (
+          /* My Claimed Tickets Tab */
+          <View style={styles.claimsList}>
+            {myClaims.length === 0 ? (
+              <View style={styles.emptyBox}>
+                <Ionicons name="wallet-outline" size={44} color={theme.colors.textTertiary} />
+                <Text style={styles.emptyTitle}>No Claimed Tickets Yet</Text>
+                <Text style={styles.emptySub}>
+                  You haven't redeemed any vouchers yet. Earn points by submitting reports to unlock transit discounts!
+                </Text>
+                <TouchableOpacity
+                  style={styles.exploreCtaBtn}
+                  onPress={() => setActiveTab('EXPLORE')}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.exploreCtaBtnText}>Explore Available Vouchers</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              myClaims.map((claim) => {
+                const isCopied = copiedCode === claim.couponCode;
+                const d = new Date(claim.claimedAt);
+                const dateStr = d.toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                });
+
+                return (
+                  <View key={claim.id} style={styles.ticketCard}>
+                    <View style={styles.ticketHeader}>
+                      <View style={styles.ticketPartnerRow}>
+                        <Ionicons name="checkmark-circle" size={16} color={theme.colors.primary} />
+                        <Text style={styles.ticketPartnerText}>
+                          {claim.partnerName || 'Government Pass'}
+                        </Text>
+                      </View>
+                      <View style={styles.activePill}>
+                        <Text style={styles.activePillText}>{claim.status}</Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.ticketTitle}>{claim.rewardTitle || 'Civic Ticket Coupon'}</Text>
+                    <Text style={styles.ticketDate}>Claimed on {dateStr}</Text>
+
+                    {/* Voucher Code Box */}
+                    <View style={styles.voucherBox}>
+                      <View>
+                        <Text style={styles.voucherLabel}>VOUCHER CODE</Text>
+                        <Text style={styles.voucherCodeText}>{claim.couponCode}</Text>
+                      </View>
                       <TouchableOpacity
-                        style={[styles.claimButton, !canAfford && styles.claimButtonDisabled]}
-                        disabled={!canAfford}
-                        onPress={() => setSelectedReward(reward)}
-                        activeOpacity={0.8}
+                        style={[styles.copyBtn, isCopied && styles.copyBtnSuccess]}
+                        onPress={() => handleCopyCode(claim.couponCode)}
+                        activeOpacity={0.7}
                       >
-                        <Text style={[styles.claimButtonText, !canAfford && styles.claimButtonTextDisabled]}>
-                          {canAfford ? 'Claim Voucher' : `Need ${reward.costPoints - balance} pts`}
+                        <Ionicons
+                          name={isCopied ? 'checkmark' : 'copy-outline'}
+                          size={15}
+                          color={isCopied ? '#FFFFFF' : theme.colors.forest}
+                          style={{ marginRight: 4 }}
+                        />
+                        <Text style={[styles.copyBtnText, isCopied && styles.copyBtnTextSuccess]}>
+                          {isCopied ? 'Copied' : 'Copy'}
                         </Text>
                       </TouchableOpacity>
                     </View>
+
+                    <Text style={styles.ticketInstructions}>
+                      {claim.redemptionInstructions ||
+                        'Show this code at the ticket counter or paste in the transit app during booking.'}
+                    </Text>
                   </View>
                 );
               })
             )}
-          </>
-        ) : (
-          /* My Claimed Vouchers Tab */
-          <>
-            {myClaims.length === 0 ? (
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyTitle}>No Vouchers Claimed Yet</Text>
-                <Text style={styles.emptyText}>
-                  Explore the catalog to redeem your points for bus passes, metro tickets, and zoo entry vouchers!
-                </Text>
-              </View>
-            ) : (
-              myClaims.map((claim) => (
-                <View key={claim.id} style={styles.claimedCard}>
-                  <View style={styles.claimedHeader}>
-                    <View>
-                      <Text style={styles.claimedPartner}>{claim.partnerName ?? 'Government Partner'}</Text>
-                      <Text style={styles.claimedTitle}>{claim.rewardTitle}</Text>
-                    </View>
-                    <View style={styles.statusPill}>
-                      <Text style={styles.statusPillText}>{claim.status}</Text>
-                    </View>
-                  </View>
-
-                  {/* Digital Coupon Code Box */}
-                  <View style={styles.codeContainer}>
-                    <Text style={styles.codeLabel}>VOUCHER CODE / PASS NUMBER</Text>
-                    <Text style={styles.codeText}>{claim.couponCode}</Text>
-                    <TouchableOpacity
-                      style={styles.copyBtn}
-                      onPress={() => handleCopyCode(claim.couponCode)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.copyBtnText}>
-                        {copiedCode === claim.couponCode ? '✓ Copied' : 'Tap to Copy Code'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Instructions */}
-                  {claim.redemptionInstructions && (
-                    <Text style={styles.claimedInstructions}>
-                      {claim.redemptionInstructions}
-                    </Text>
-                  )}
-
-                  <View style={styles.claimedFooter}>
-                    <Text style={styles.expiryText}>
-                      Valid until: {new Date(claim.expiresAt).toLocaleDateString(undefined, { dateStyle: 'medium' })}
-                    </Text>
-                    <Text style={styles.costDeducted}>-{claim.costPoints} pts</Text>
-                  </View>
-                </View>
-              ))
-            )}
-          </>
+          </View>
         )}
+
+        <View style={{ height: 40 }} />
       </ScrollView>
 
       {/* Confirmation Modal */}
-      <Modal visible={!!selectedReward} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Confirm Redemption</Text>
-            {selectedReward && (
-              <>
-                <Text style={styles.modalRewardTitle}>{selectedReward.title}</Text>
-                <Text style={styles.modalDescription}>{selectedReward.description}</Text>
-
-                <View style={styles.breakdownBox}>
-                  <View style={styles.breakdownRow}>
-                    <Text style={styles.breakdownLabel}>Current Balance:</Text>
-                    <Text style={styles.breakdownValue}>{balance} pts</Text>
-                  </View>
-                  <View style={styles.breakdownRow}>
-                    <Text style={styles.breakdownLabel}>Cost:</Text>
-                    <Text style={styles.breakdownCost}>-{selectedReward.costPoints} pts</Text>
-                  </View>
-                  <View style={[styles.breakdownRow, styles.breakdownTotal]}>
-                    <Text style={styles.breakdownTotalLabel}>Remaining Balance:</Text>
-                    <Text style={styles.breakdownTotalValue}>
-                      {balance - selectedReward.costPoints} pts
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.modalActions}>
-                  <TouchableOpacity
-                    style={styles.cancelBtn}
-                    onPress={() => setSelectedReward(null)}
-                    disabled={claimMutation.isPending}
-                  >
-                    <Text style={styles.cancelBtnText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.confirmBtn}
-                    onPress={() => claimMutation.mutate(selectedReward)}
-                    disabled={claimMutation.isPending}
-                  >
-                    {claimMutation.isPending ? (
-                      <ActivityIndicator color={colors.surface.white} />
-                    ) : (
-                      <Text style={styles.confirmBtnText}>Confirm & Get Code</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </View>
-        </View>
-      </Modal>
-
-      {/* Claim Success Dialog */}
-      <Modal visible={!!claimSuccessClaim} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, styles.successModalContent]}>
-            <Text style={styles.successEmoji}>🎉</Text>
-            <Text style={styles.modalTitle}>Ticket Voucher Issued!</Text>
-            <Text style={styles.successSubtext}>
-              Your points have been securely debited. Present this coupon voucher code when traveling or booking:
-            </Text>
-
-            {claimSuccessClaim && (
-              <View style={styles.successCodeBox}>
-                <Text style={styles.successCodeLabel}>COUPON CODE</Text>
-                <Text style={styles.successCodeValue}>{claimSuccessClaim.couponCode}</Text>
+      {selectedReward && (
+        <Modal transparent animationType="fade" visible={!!selectedReward}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalIconWrap}>
+                <Ionicons name="gift" size={32} color={theme.colors.primary} />
               </View>
-            )}
 
-            <TouchableOpacity
-              style={styles.successDoneBtn}
-              onPress={() => {
-                setClaimSuccessClaim(null);
-                setActiveTab('MY_TICKETS');
-              }}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.successDoneBtnText}>View in My Vouchers</Text>
-            </TouchableOpacity>
+              <Text style={styles.modalTitle}>Redeem This Voucher?</Text>
+              <Text style={styles.modalSubtitle}>{selectedReward.title}</Text>
+
+              <View style={styles.modalDetailsBox}>
+                <View style={styles.modalDetailRow}>
+                  <Text style={styles.modalDetailLabel}>Cost in EcoPoints:</Text>
+                  <Text style={styles.modalDetailCost}>-{selectedReward.costPoints} pts</Text>
+                </View>
+                <View style={styles.modalDetailRow}>
+                  <Text style={styles.modalDetailLabel}>Your Current Balance:</Text>
+                  <Text style={styles.modalDetailVal}>{balance} pts</Text>
+                </View>
+                <View style={styles.modalDetailRow}>
+                  <Text style={styles.modalDetailLabel}>Remaining After Claim:</Text>
+                  <Text style={styles.modalDetailRemaining}>
+                    {balance - selectedReward.costPoints} pts
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.modalButtonsRow}>
+                <TouchableOpacity
+                  style={styles.modalCancelBtn}
+                  onPress={() => setSelectedReward(null)}
+                  activeOpacity={0.7}
+                  disabled={claimMutation.isPending}
+                >
+                  <Text style={styles.modalCancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.modalConfirmBtn}
+                  onPress={() => claimMutation.mutate(selectedReward)}
+                  activeOpacity={0.85}
+                  disabled={claimMutation.isPending}
+                >
+                  {claimMutation.isPending ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.modalConfirmBtnText}>Confirm & Redeem</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
+
+      {/* Success Dialog Modal */}
+      {claimSuccessClaim && (
+        <Modal transparent animationType="fade" visible={!!claimSuccessClaim}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={[styles.modalIconWrap, { backgroundColor: '#ECFDF5' }]}>
+                <Ionicons name="checkmark-circle" size={36} color={theme.colors.primary} />
+              </View>
+
+              <Text style={styles.modalTitle}>Voucher Unlocked!</Text>
+              <Text style={styles.modalSubtitle}>
+                Your discount ticket code has been generated.
+              </Text>
+
+              <View style={styles.voucherBoxModal}>
+                <Text style={styles.voucherCodeModal}>{claimSuccessClaim.couponCode}</Text>
+                <TouchableOpacity
+                  style={[styles.copyBtn, copiedCode === claimSuccessClaim.couponCode && styles.copyBtnSuccess]}
+                  onPress={() => handleCopyCode(claimSuccessClaim.couponCode)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name={copiedCode === claimSuccessClaim.couponCode ? 'checkmark' : 'copy-outline'}
+                    size={16}
+                    color={copiedCode === claimSuccessClaim.couponCode ? '#FFFFFF' : theme.colors.forest}
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text
+                    style={[
+                      styles.copyBtnText,
+                      copiedCode === claimSuccessClaim.couponCode && styles.copyBtnTextSuccess,
+                    ]}
+                  >
+                    {copiedCode === claimSuccessClaim.couponCode ? 'Copied!' : 'Copy Code'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                style={styles.doneBtn}
+                onPress={() => {
+                  setClaimSuccessClaim(null);
+                  setActiveTab('MY_TICKETS');
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.doneBtnText}>View in My Tickets</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.surface.background },
+  container: {
+    flex: 1,
+    backgroundColor: theme.colors.background, // #F4F8F5
+  },
   header: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    backgroundColor: colors.surface.white,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 14,
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: colors.neutral[200],
+    borderBottomColor: theme.colors.border,
   },
-  titleRow: {
+  headerTopRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.md,
+    justifyContent: 'space-between',
+    marginBottom: 12,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: colors.neutral[900],
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#F0FDF4',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  verifiedTag: {
-    backgroundColor: '#E8F5E9',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: '#C8E6C9',
+  headerTitleWrap: {
+    alignItems: 'center',
+    flex: 1,
   },
-  verifiedTagText: {
-    fontSize: 11,
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: theme.colors.forest,
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
     fontWeight: '600',
-    color: '#2E7D32',
+    marginTop: 1,
   },
+
+  // Balance Hero Card
   balanceCard: {
-    backgroundColor: colors.primary[900],
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    marginBottom: spacing.md,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1.5,
+    borderColor: '#C6E7D2',
+    marginBottom: 14,
+    ...theme.shadows.card,
   },
   balanceHeader: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  balanceTitleRow: {
+    flexDirection: 'row',
     alignItems: 'center',
   },
   balanceLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: colors.primary[200],
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.colors.forest,
   },
   liveIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
   },
   liveDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#4CAF50',
+    backgroundColor: theme.colors.primary,
+    marginRight: 5,
   },
   liveText: {
     fontSize: 10,
-    color: colors.primary[100],
+    fontWeight: '700',
+    color: theme.colors.forest,
+  },
+  balanceValueRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginBottom: 6,
   },
   balanceValue: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '800',
-    color: colors.surface.white,
-    marginVertical: 4,
+    color: theme.colors.forest,
+    marginRight: 6,
+  },
+  balanceUnit: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: theme.colors.primary,
   },
   balanceNote: {
-    fontSize: 12,
-    color: colors.primary[200],
+    fontSize: 11,
+    color: theme.colors.textSecondary,
     lineHeight: 16,
   },
+
+  // Tabs
   tabSelector: {
     flexDirection: 'row',
-    backgroundColor: colors.neutral[100],
-    borderRadius: radius.md,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
     padding: 3,
-    marginBottom: spacing.sm,
   },
   tabButton: {
     flex: 1,
-    paddingVertical: 8,
+    flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: radius.sm,
+    justifyContent: 'center',
+    paddingVertical: 9,
+    borderRadius: 9,
   },
   tabButtonActive: {
-    backgroundColor: colors.surface.white,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    backgroundColor: theme.colors.forest,
   },
   tabButtonText: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.neutral[600],
+    color: theme.colors.textSecondary,
   },
   tabButtonTextActive: {
-    color: colors.primary[800],
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
+
+  // Scroll
   scroll: {
-    padding: spacing.lg,
-    gap: spacing.md,
-  },
-  categoriesRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    paddingBottom: spacing.xs,
-  },
-  categoryChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: radius.full,
-    backgroundColor: colors.surface.white,
-    borderWidth: 1,
-    borderColor: colors.neutral[300],
-  },
-  categoryChipActive: {
-    backgroundColor: colors.primary[800],
-    borderColor: colors.primary[800],
-  },
-  categoryChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.neutral[700],
-  },
-  categoryChipTextActive: {
-    color: colors.surface.white,
-  },
-  card: {
-    backgroundColor: colors.surface.white,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.neutral[200],
-    gap: spacing.sm,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  partnerInfo: {
     flex: 1,
-    paddingRight: spacing.sm,
   },
-  partnerName: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.primary[700],
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+  scrollContent: {
+    padding: 16,
   },
-  rewardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.neutral[900],
-    marginTop: 2,
+
+  // Categories
+  categoriesRow: {
+    gap: 8,
+    marginBottom: 16,
   },
-  discountBadge: {
-    backgroundColor: '#E8F5E9',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: '#A5D6A7',
-  },
-  discountBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#1B5E20',
-  },
-  description: {
-    fontSize: 13,
-    color: colors.neutral[600],
-    lineHeight: 18,
-  },
-  instructionsPreview: {
-    backgroundColor: colors.neutral[50],
-    padding: spacing.sm,
-    borderRadius: radius.md,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.primary[500],
-  },
-  instructionsPreviewTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.neutral[800],
-    marginBottom: 2,
-  },
-  instructionsPreviewText: {
-    fontSize: 12,
-    color: colors.neutral[600],
-  },
-  cardFooter: {
+  catChip: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: spacing.xs,
-    paddingTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.neutral[100],
-  },
-  costBadge: {
-    gap: 2,
-  },
-  costPoints: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.primary[800],
-  },
-  stockText: {
-    fontSize: 11,
-    color: colors.neutral[500],
-  },
-  claimButton: {
-    backgroundColor: colors.primary[800],
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: radius.md,
-  },
-  claimButtonDisabled: {
-    backgroundColor: colors.neutral[200],
-  },
-  claimButtonText: {
-    color: colors.surface.white,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  claimButtonTextDisabled: {
-    color: colors.neutral[500],
-  },
-  claimedCard: {
-    backgroundColor: colors.surface.white,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: colors.neutral[200],
-    gap: spacing.sm,
+    borderColor: theme.colors.border,
+    ...theme.shadows.card,
   },
-  claimedHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+  catChipActive: {
+    backgroundColor: theme.colors.forest,
+    borderColor: theme.colors.forest,
   },
-  claimedPartner: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.primary[700],
-    textTransform: 'uppercase',
-  },
-  claimedTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.neutral[900],
-    marginTop: 2,
-  },
-  statusPill: {
-    backgroundColor: '#E8F5E9',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radius.full,
-  },
-  statusPillText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#2E7D32',
-  },
-  codeContainer: {
-    backgroundColor: '#F1F8E9',
-    padding: spacing.md,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    marginVertical: spacing.xs,
-    borderWidth: 1,
-    borderColor: '#DCEDC8',
-    borderStyle: 'dashed',
-  },
-  codeLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#558B2F',
-    letterSpacing: 1,
-  },
-  codeText: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: '#1B5E20',
-    letterSpacing: 2,
-    marginVertical: 6,
-  },
-  copyBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    backgroundColor: '#DCEDC8',
-    borderRadius: radius.sm,
-  },
-  copyBtnText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#33691E',
-  },
-  claimedInstructions: {
+  catChipText: {
     fontSize: 12,
-    color: colors.neutral[600],
-    fontStyle: 'italic',
+    fontWeight: '700',
+    color: theme.colors.forest,
   },
-  claimedFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  catChipTextActive: {
+    color: '#FFFFFF',
+  },
+
+  // Loading & Empty
+  loadingBox: {
+    paddingVertical: 40,
     alignItems: 'center',
-    marginTop: spacing.xs,
-    paddingTop: spacing.xs,
-    borderTopWidth: 1,
-    borderTopColor: colors.neutral[100],
-  },
-  expiryText: {
-    fontSize: 11,
-    color: colors.neutral[500],
-  },
-  costDeducted: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.neutral[600],
-  },
-  centerContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing['2xl'],
-    gap: spacing.sm,
   },
   loadingText: {
-    fontSize: 13,
-    color: colors.neutral[600],
+    marginTop: 12,
+    fontSize: 14,
+    color: theme.colors.textSecondary,
+    fontWeight: '600',
   },
-  emptyContainer: {
-    backgroundColor: colors.surface.white,
-    padding: spacing.xl,
-    borderRadius: radius.lg,
+  emptyBox: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
     borderWidth: 1,
-    borderColor: colors.neutral[200],
+    borderColor: theme.colors.border,
+    marginTop: 10,
   },
   emptyTitle: {
     fontSize: 16,
-    fontWeight: '700',
-    color: colors.neutral[800],
+    fontWeight: '800',
+    color: theme.colors.forest,
+    marginTop: 10,
   },
-  emptyText: {
-    fontSize: 13,
-    color: colors.neutral[600],
+  emptySub: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
     textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 18,
   },
+  exploreCtaBtn: {
+    backgroundColor: theme.colors.forest,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginTop: 14,
+  },
+  exploreCtaBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+
+  // Rewards List
+  rewardsList: {
+    gap: 14,
+  },
+  rewardCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    ...theme.shadows.card,
+  },
+  rewardTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  partnerTag: {
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  partnerTagText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: theme.colors.textSecondary,
+  },
+  costBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  costBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#D97706',
+  },
+  rewardTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: theme.colors.forest,
+    marginBottom: 4,
+  },
+  rewardDesc: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+    lineHeight: 18,
+  },
+  rewardDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+    marginVertical: 12,
+  },
+  rewardBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  discountValueText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: theme.colors.primary,
+  },
+  termsText: {
+    fontSize: 11,
+    color: theme.colors.textTertiary,
+    marginTop: 1,
+  },
+  redeemBtn: {
+    backgroundColor: theme.colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 10,
+  },
+  redeemBtnDisabled: {
+    backgroundColor: '#E2E8F0',
+  },
+  redeemBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  redeemBtnTextDisabled: {
+    color: '#94A3B8',
+  },
+
+  // My Claims / Tickets
+  claimsList: {
+    gap: 14,
+  },
+  ticketCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    ...theme.shadows.card,
+  },
+  ticketHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  ticketPartnerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  ticketPartnerText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: theme.colors.primary,
+    marginLeft: 4,
+  },
+  activePill: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  activePillText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: theme.colors.forest,
+  },
+  ticketTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: theme.colors.forest,
+  },
+  ticketDate: {
+    fontSize: 11,
+    color: theme.colors.textTertiary,
+    marginTop: 2,
+    marginBottom: 10,
+  },
+  voucherBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderStyle: 'dashed',
+    marginBottom: 8,
+  },
+  voucherLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: theme.colors.textTertiary,
+  },
+  voucherCodeText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: theme.colors.forest,
+    letterSpacing: 1.5,
+    marginTop: 2,
+  },
+  copyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  copyBtnSuccess: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  copyBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.forest,
+  },
+  copyBtnTextSuccess: {
+    color: '#FFFFFF',
+  },
+  ticketInstructions: {
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+    lineHeight: 16,
+  },
+
+  // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: spacing.lg,
+    padding: 24,
   },
   modalContent: {
-    backgroundColor: colors.surface.white,
-    borderRadius: radius.xl,
-    padding: spacing.xl,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
     width: '100%',
-    maxWidth: 400,
-    gap: spacing.md,
+    maxWidth: 340,
+    alignItems: 'center',
+  },
+  modalIconWrap: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#F0FDF4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
   },
   modalTitle: {
     fontSize: 18,
-    fontWeight: '700',
-    color: colors.neutral[900],
+    fontWeight: '800',
+    color: theme.colors.forest,
     textAlign: 'center',
   },
-  modalRewardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.primary[800],
-    textAlign: 'center',
-  },
-  modalDescription: {
+  modalSubtitle: {
     fontSize: 13,
-    color: colors.neutral[600],
+    color: theme.colors.textSecondary,
     textAlign: 'center',
+    marginTop: 4,
+    marginBottom: 16,
   },
-  breakdownBox: {
-    backgroundColor: colors.neutral[50],
-    padding: spacing.md,
-    borderRadius: radius.md,
-    gap: spacing.xs,
+  modalDetailsBox: {
+    width: '100%',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 18,
+    gap: 8,
   },
-  breakdownRow: {
+  modalDetailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-  breakdownLabel: {
-    fontSize: 13,
-    color: colors.neutral[600],
+  modalDetailLabel: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
   },
-  breakdownValue: {
+  modalDetailCost: {
     fontSize: 13,
-    fontWeight: '600',
-    color: colors.neutral[800],
+    fontWeight: '800',
+    color: '#DC2626',
   },
-  breakdownCost: {
+  modalDetailVal: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#D32F2F',
+    color: theme.colors.forest,
   },
-  breakdownTotal: {
-    borderTopWidth: 1,
-    borderTopColor: colors.neutral[200],
-    paddingTop: spacing.xs,
-    marginTop: spacing.xs,
+  modalDetailRemaining: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: theme.colors.primary,
   },
-  breakdownTotalLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.neutral[900],
-  },
-  breakdownTotalValue: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.primary[700],
-  },
-  modalActions: {
+  modalButtonsRow: {
     flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.xs,
+    gap: 10,
+    width: '100%',
   },
-  cancelBtn: {
+  modalCancelBtn: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: radius.md,
-    backgroundColor: colors.neutral[100],
+    height: 44,
+    borderRadius: 10,
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F1F5F9',
   },
-  cancelBtnText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.neutral[700],
-  },
-  confirmBtn: {
-    flex: 2,
-    paddingVertical: 12,
-    borderRadius: radius.md,
-    backgroundColor: colors.primary[800],
-    alignItems: 'center',
-  },
-  confirmBtnText: {
+  modalCancelBtnText: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.surface.white,
+    color: theme.colors.textSecondary,
   },
-  successModalContent: {
+  modalConfirmBtn: {
+    flex: 1.4,
+    height: 44,
+    borderRadius: 10,
     alignItems: 'center',
-    textAlign: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.primary,
   },
-  successEmoji: {
-    fontSize: 40,
-    marginBottom: -4,
+  modalConfirmBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
-  successSubtext: {
-    fontSize: 13,
-    color: colors.neutral[600],
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-  successCodeBox: {
-    backgroundColor: '#E8F5E9',
-    padding: spacing.md,
-    borderRadius: radius.md,
+
+  // Voucher Box Modal
+  voucherBoxModal: {
     alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 16,
     width: '100%',
+    marginBottom: 18,
     borderWidth: 1,
-    borderColor: '#A5D6A7',
+    borderColor: '#E2E8F0',
     borderStyle: 'dashed',
   },
-  successCodeLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#2E7D32',
-    letterSpacing: 1,
-  },
-  successCodeValue: {
+  voucherCodeModal: {
     fontSize: 22,
-    fontWeight: '900',
-    color: '#1B5E20',
+    fontWeight: '800',
+    color: theme.colors.forest,
     letterSpacing: 2,
-    marginTop: 4,
+    marginBottom: 12,
   },
-  successDoneBtn: {
-    backgroundColor: colors.primary[800],
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: radius.md,
+  doneBtn: {
+    backgroundColor: theme.colors.forest,
     width: '100%',
+    height: 46,
+    borderRadius: 12,
     alignItems: 'center',
-    marginTop: spacing.xs,
+    justifyContent: 'center',
   },
-  successDoneBtnText: {
-    color: colors.surface.white,
+  doneBtnText: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
 });

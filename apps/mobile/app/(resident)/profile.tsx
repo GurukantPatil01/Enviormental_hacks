@@ -109,6 +109,43 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* Civic Standings & Rewards */}
+        <View style={styles.settingsGroupCard}>
+          <Text style={styles.groupTitle}>Standings & Rewards</Text>
+
+          {/* Leaderboard */}
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => router.push('/(resident)/leaderboard')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.settingIconCircle, { backgroundColor: '#FEF3C7' }]}>
+              <Ionicons name="trophy" size={18} color="#D97706" />
+            </View>
+            <View style={styles.settingTextWrap}>
+              <Text style={styles.settingTitle}>Civic Leaderboard</Text>
+              <Text style={styles.settingSub}>Monthly rankings & community tiers</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
+          </TouchableOpacity>
+
+          {/* Redeem EcoPoints */}
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => router.push('/(resident)/rewards')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.settingIconCircle, { backgroundColor: '#F0FDF4' }]}>
+              <Ionicons name="gift" size={18} color={theme.colors.primary} />
+            </View>
+            <View style={styles.settingTextWrap}>
+              <Text style={styles.settingTitle}>Redeem EcoPoints</Text>
+              <Text style={styles.settingSub}>PMPML Bus, Metro & municipal ticket discounts</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
+          </TouchableOpacity>
+        </View>
+
         {/* Account & App Settings */}
         <View style={styles.settingsGroupCard}>
           <Text style={styles.groupTitle}>Preferences & Notifications</Text>

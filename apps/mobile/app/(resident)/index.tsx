@@ -253,8 +253,12 @@ export default function HomeScreen() {
             </Text>
           </View>
 
-          {/* Card 4: Eco Points */}
-          <View style={[styles.impactCard, { backgroundColor: theme.colors.impact.pointsBg }]}>
+          {/* Card 4: Eco Points (Tappable shortcut to Redeem Rewards) */}
+          <TouchableOpacity
+            style={[styles.impactCard, { backgroundColor: theme.colors.impact.pointsBg }]}
+            onPress={() => router.push('/(resident)/rewards')}
+            activeOpacity={0.8}
+          >
             <Ionicons
               name="star-outline"
               size={20}
@@ -263,10 +267,48 @@ export default function HomeScreen() {
             <Text style={[styles.impactValue, { color: theme.colors.impact.pointsText }]}>
               {impact.pointsBalance}
             </Text>
-            <Text style={[styles.impactLabel, { color: theme.colors.impact.pointsText }]}>
-              Eco Points
-            </Text>
-          </View>
+            <View style={styles.pointsLabelRow}>
+              <Text style={[styles.impactLabel, { color: theme.colors.impact.pointsText }]}>
+                Eco Points
+              </Text>
+              <Text style={styles.redeemHintText}>Redeem ›</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        {/* Quick Civic Actions: Leaderboard & Redeem Rewards */}
+        <View style={styles.quickActionsRow}>
+          {/* Action 1: Leaderboard */}
+          <TouchableOpacity
+            style={styles.quickActionCard}
+            onPress={() => router.push('/(resident)/leaderboard')}
+            activeOpacity={0.85}
+          >
+            <View style={[styles.quickActionIconWrap, { backgroundColor: '#FEF3C7' }]}>
+              <Ionicons name="trophy" size={20} color="#D97706" />
+            </View>
+            <View style={styles.quickActionTextCol}>
+              <Text style={styles.quickActionTitle}>Civic Leaderboard</Text>
+              <Text style={styles.quickActionSub}>Ward rankings & top citizens</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={theme.colors.forest} />
+          </TouchableOpacity>
+
+          {/* Action 2: Redeem Rewards */}
+          <TouchableOpacity
+            style={styles.quickActionCard}
+            onPress={() => router.push('/(resident)/rewards')}
+            activeOpacity={0.85}
+          >
+            <View style={[styles.quickActionIconWrap, { backgroundColor: '#F0FDF4' }]}>
+              <Ionicons name="gift" size={20} color={theme.colors.primary} />
+            </View>
+            <View style={styles.quickActionTextCol}>
+              <Text style={styles.quickActionTitle}>Redeem Vouchers</Text>
+              <Text style={styles.quickActionSub}>Bus, Metro & Zoo discounts</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={theme.colors.forest} />
+          </TouchableOpacity>
         </View>
 
         {/* 5. "Recent Reports" Section */}
@@ -599,6 +641,51 @@ const styles = StyleSheet.create({
   impactLabel: {
     fontSize: 11,
     fontWeight: '600',
+  },
+  pointsLabelRow: {
+    alignItems: 'center',
+  },
+  redeemHintText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: theme.colors.primary,
+    marginTop: 2,
+  },
+  quickActionsRow: {
+    flexDirection: 'column',
+    gap: 10,
+    marginBottom: theme.spacing.base,
+  },
+  quickActionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    ...theme.shadows.card,
+  },
+  quickActionIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  quickActionTextCol: {
+    flex: 1,
+  },
+  quickActionTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: theme.colors.forest,
+  },
+  quickActionSub: {
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+    marginTop: 1,
   },
   emptyCard: {
     backgroundColor: '#FFFFFF',

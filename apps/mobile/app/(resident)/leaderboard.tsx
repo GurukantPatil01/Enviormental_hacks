@@ -1,6 +1,7 @@
-import { colors, radius, spacing, typography } from '@ecopulse/design-system';
-import type { LeaderboardEntry, LeaderboardPeriod, LeaderboardTier } from '@ecopulse/types';
+import { Ionicons } from '@expo/vector-icons';
+import type { LeaderboardPeriod, LeaderboardTier } from '@ecopulse/types';
 import { useQuery } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -13,24 +14,26 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { theme } from '../../constants/theme';
 import { api } from '../../lib/api';
 
-function getTierColor(tier: LeaderboardTier): { bg: string; text: string; border: string } {
+function getTierBadge(tier: LeaderboardTier): { bg: string; text: string; icon: string } {
   switch (tier) {
     case 'Eco Champion':
-      return { bg: '#ECFDF5', text: '#059669', border: '#10B981' };
+      return { bg: '#ECFDF5', text: '#059669', icon: 'trophy' };
     case 'Green Guardian':
-      return { bg: '#FEF3C7', text: '#D97706', border: '#F59E0B' };
+      return { bg: '#FEF3C7', text: '#D97706', icon: 'shield-checkmark' };
     case 'Civic Steward':
-      return { bg: '#ECFEFF', text: '#0891B2', border: '#06B6D4' };
+      return { bg: '#EFF6FF', text: '#1D4ED8', icon: 'ribbon' };
     case 'Eco Pioneer':
-      return { bg: '#FFF7ED', text: '#EA580C', border: '#F97316' };
+      return { bg: '#FFF7ED', text: '#EA580C', icon: 'flame' };
     default:
-      return { bg: '#F3F4F6', text: '#4B5563', border: '#9CA3AF' };
+      return { bg: '#F1F5F9', text: '#475569', icon: 'medal' };
   }
 }
 
 export default function LeaderboardScreen() {
+  const router = useRouter();
   const [period, setPeriod] = useState<LeaderboardPeriod>('monthly');
 
   const {
@@ -52,37 +55,53 @@ export default function LeaderboardScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      {/* Top Header */}
+      {/* Top Header with Back Navigation */}
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
-          <View>
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => router.back()}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-back" size={22} color={theme.colors.forest} />
+          </TouchableOpacity>
+
+          <View style={styles.headerTitleWrap}>
             <Text style={styles.headerTitle}>Civic Leaderboard</Text>
             <Text style={styles.headerSubtitle}>
-              {period === 'monthly' ? `${data?.month || 'Current Month'} Cycle` : 'All-Time Lifetime'}
+              {period === 'monthly' ? `${data?.month || 'Current Month'} Cycle` : 'Lifetime Points'}
             </Text>
           </View>
 
-          {data && period === 'monthly' && (
+          {data && period === 'monthly' ? (
             <View style={styles.countdownBadge}>
-              <Text style={styles.countdownText}>⏳ {data.daysRemaining}d to reset</Text>
+              <Text style={styles.countdownText}>⏳ {data.daysRemaining}d left</Text>
             </View>
+          ) : (
+            <View style={{ width: 40 }} />
           )}
         </View>
 
-        {/* Period Switcher Pills */}
+        {/* Period Switcher Tabs */}
         <View style={styles.periodSwitcher}>
           <TouchableOpacity
             style={[styles.periodTab, period === 'monthly' && styles.periodTabActive]}
             onPress={() => setPeriod('monthly')}
             activeOpacity={0.8}
           >
+            <Ionicons
+              name="calendar-outline"
+              size={15}
+              color={period === 'monthly' ? '#FFFFFF' : theme.colors.textSecondary}
+              style={{ marginRight: 6 }}
+            />
             <Text
               style={[
                 styles.periodTabText,
                 period === 'monthly' && styles.periodTabTextActive,
               ]}
             >
-              📅 Monthly ({data?.month?.split(' ')[0] || 'Current'})
+              Monthly Cycle
             </Text>
           </TouchableOpacity>
 
@@ -91,13 +110,19 @@ export default function LeaderboardScreen() {
             onPress={() => setPeriod('all_time')}
             activeOpacity={0.8}
           >
+            <Ionicons
+              name="star-outline"
+              size={15}
+              color={period === 'all_time' ? '#FFFFFF' : theme.colors.textSecondary}
+              style={{ marginRight: 6 }}
+            />
             <Text
               style={[
                 styles.periodTabText,
                 period === 'all_time' && styles.periodTabTextActive,
               ]}
             >
-              ⭐ All-Time
+              All-Time
             </Text>
           </TouchableOpacity>
         </View>
@@ -106,7 +131,7 @@ export default function LeaderboardScreen() {
       {/* Main Content Area */}
       {isLoading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary[600]} />
+          <ActivityIndicator size="large" color={theme.colors.primary} />
           <Text style={styles.loadingText}>Calculating monthly points & rankings...</Text>
         </View>
       ) : (
@@ -118,7 +143,7 @@ export default function LeaderboardScreen() {
             <RefreshControl
               refreshing={isRefetching}
               onRefresh={refetch}
-              colors={[colors.primary[600]]}
+              colors={[theme.colors.primary]}
             />
           }
         >
@@ -142,8 +167,8 @@ export default function LeaderboardScreen() {
                       {(period === 'monthly' ? top2.monthlyPoints : top2.totalPoints).toLocaleString()}{' '}
                       pts
                     </Text>
-                    <View style={[styles.tierChip, { backgroundColor: getTierColor(top2.tier).bg }]}>
-                      <Text style={[styles.tierChipText, { color: getTierColor(top2.tier).text }]}>
+                    <View style={[styles.tierChip, { backgroundColor: getTierBadge(top2.tier).bg }]}>
+                      <Text style={[styles.tierChipText, { color: getTierBadge(top2.tier).text }]}>
                         {top2.tier}
                       </Text>
                     </View>
@@ -177,8 +202,8 @@ export default function LeaderboardScreen() {
                       {(period === 'monthly' ? top1.monthlyPoints : top1.totalPoints).toLocaleString()}{' '}
                       pts
                     </Text>
-                    <View style={[styles.tierChip, { backgroundColor: getTierColor(top1.tier).bg }]}>
-                      <Text style={[styles.tierChipText, { color: getTierColor(top1.tier).text }]}>
+                    <View style={[styles.tierChip, { backgroundColor: getTierBadge(top1.tier).bg }]}>
+                      <Text style={[styles.tierChipText, { color: getTierBadge(top1.tier).text }]}>
                         {top1.tier}
                       </Text>
                     </View>
@@ -208,8 +233,8 @@ export default function LeaderboardScreen() {
                       {(period === 'monthly' ? top3.monthlyPoints : top3.totalPoints).toLocaleString()}{' '}
                       pts
                     </Text>
-                    <View style={[styles.tierChip, { backgroundColor: getTierColor(top3.tier).bg }]}>
-                      <Text style={[styles.tierChipText, { color: getTierColor(top3.tier).text }]}>
+                    <View style={[styles.tierChip, { backgroundColor: getTierBadge(top3.tier).bg }]}>
+                      <Text style={[styles.tierChipText, { color: getTierBadge(top3.tier).text }]}>
                         {top3.tier}
                       </Text>
                     </View>
@@ -220,6 +245,31 @@ export default function LeaderboardScreen() {
                 <View style={[styles.podiumBase, styles.podiumBase3]}>
                   <Text style={styles.podiumBaseRank}>🥉 3rd</Text>
                 </View>
+              </View>
+            </View>
+          )}
+
+          {/* Current User Highlight Banner if not in top 3 */}
+          {currentUserEntry && currentUserEntry.rank > 3 && (
+            <View style={styles.myRankCard}>
+              <View style={styles.myRankLeft}>
+                <View style={styles.myRankBadge}>
+                  <Text style={styles.myRankNum}>#{currentUserEntry.rank}</Text>
+                </View>
+                <View style={styles.myRankTextWrap}>
+                  <Text style={styles.myRankTitle}>Your Current Standing</Text>
+                  <Text style={styles.myRankSub}>{currentUserEntry.tier}</Text>
+                </View>
+              </View>
+              <View style={styles.myRankPointsCol}>
+                <Text style={styles.myRankPoints}>
+                  {(period === 'monthly'
+                    ? currentUserEntry.monthlyPoints
+                    : currentUserEntry.totalPoints
+                  ).toLocaleString()}{' '}
+                  pts
+                </Text>
+                <Text style={styles.myRankReports}>{currentUserEntry.verifiedActionsCount} verified reports</Text>
               </View>
             </View>
           )}
@@ -236,7 +286,7 @@ export default function LeaderboardScreen() {
           {remainingEntries.length > 0 ? (
             <View style={styles.rankingsList}>
               {remainingEntries.map((item) => {
-                const tierColor = getTierColor(item.tier);
+                const badge = getTierBadge(item.tier);
                 const isCurrent = item.isCurrentUser;
                 return (
                   <View
@@ -251,9 +301,9 @@ export default function LeaderboardScreen() {
 
                     <Image source={{ uri: item.avatarUrl }} style={styles.rowAvatar} />
 
-                    <View style={styles.rowDetails}>
-                      <View style={styles.rowNameWrap}>
-                        <Text style={styles.rowName} numberOfLines={1}>
+                    <View style={styles.rowInfoCol}>
+                      <View style={styles.rowNameRow}>
+                        <Text style={[styles.rowName, isCurrent && styles.rowNameCurrent]} numberOfLines={1}>
                           {item.name}
                         </Text>
                         {isCurrent && (
@@ -262,22 +312,20 @@ export default function LeaderboardScreen() {
                           </View>
                         )}
                       </View>
-
-                      <View style={styles.rowMetaRow}>
-                        <View style={[styles.tierPill, { backgroundColor: tierColor.bg }]}>
-                          <Text style={[styles.tierPillText, { color: tierColor.text }]}>
+                      <View style={styles.rowSubRow}>
+                        <View style={[styles.rowTierTag, { backgroundColor: badge.bg }]}>
+                          <Text style={[styles.rowTierText, { color: badge.text }]}>
                             {item.tier}
                           </Text>
                         </View>
-
-                        {item.streak > 0 && (
-                          <Text style={styles.streakText}>🔥 {item.streak}d</Text>
-                        )}
+                        <Text style={styles.rowReportsCount}>
+                          • {item.verifiedActionsCount} reports
+                        </Text>
                       </View>
                     </View>
 
-                    <View style={styles.pointsCol}>
-                      <Text style={styles.rowPointsValue}>
+                    <View style={styles.rowPointsCol}>
+                      <Text style={styles.rowPointsVal}>
                         {(period === 'monthly' ? item.monthlyPoints : item.totalPoints).toLocaleString()}
                       </Text>
                       <Text style={styles.rowPointsLabel}>pts</Text>
@@ -286,44 +334,18 @@ export default function LeaderboardScreen() {
                 );
               })}
             </View>
-          ) : entries.length <= 3 ? (
+          ) : (
             <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>Top 3 leaders listed above.</Text>
-            </View>
-          ) : null}
-
-          {/* Bottom spacing so pinned user card doesn't obscure list */}
-          <View style={{ height: 90 }} />
-        </ScrollView>
-      )}
-
-      {/* Floating / Sticky "Your Rank" Bottom Bar */}
-      {currentUserEntry && (
-        <View style={styles.stickyUserCard}>
-          <View style={styles.stickyUserLeft}>
-            <View style={styles.stickyRankBadge}>
-              <Text style={styles.stickyRankText}>#{currentUserEntry.rank}</Text>
-            </View>
-            <View>
-              <Text style={styles.stickyUserName}>Your Current Standing</Text>
-              <Text style={styles.stickyUserSub}>
-                {currentUserEntry.tier} • {currentUserEntry.verifiedActionsCount} actions this cycle
+              <Ionicons name="trophy-outline" size={40} color={theme.colors.primary} />
+              <Text style={styles.emptyTitle}>Leaderboard Warming Up</Text>
+              <Text style={styles.emptySub}>
+                Submit waste reports and complete verified cleanups to earn EcoPoints and climb the civic ladder!
               </Text>
             </View>
-          </View>
+          )}
 
-          <View style={styles.stickyUserRight}>
-            <Text style={styles.stickyPoints}>
-              {(period === 'monthly'
-                ? currentUserEntry.monthlyPoints
-                : currentUserEntry.totalPoints
-              ).toLocaleString()}
-            </Text>
-            <Text style={styles.stickyPointsLabel}>
-              {period === 'monthly' ? 'monthly pts' : 'total pts'}
-            </Text>
-          </View>
-        </View>
+          <View style={{ height: 40 }} />
+        </ScrollView>
       )}
     </SafeAreaView>
   );
@@ -332,132 +354,148 @@ export default function LeaderboardScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: theme.colors.background, // #F4F8F5
   },
   header: {
-    backgroundColor: colors.surface.white,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.md,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 14,
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    borderBottomColor: theme.colors.border,
   },
   headerTopRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.md,
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#F0FDF4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitleWrap: {
+    alignItems: 'center',
+    flex: 1,
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: '800',
-    color: '#0F172A',
-    letterSpacing: -0.5,
+    color: theme.colors.forest,
   },
   headerSubtitle: {
     fontSize: 12,
-    fontWeight: '500',
-    color: '#64748B',
-    marginTop: 2,
+    color: theme.colors.textSecondary,
+    fontWeight: '600',
+    marginTop: 1,
   },
   countdownBadge: {
     backgroundColor: '#FEF3C7',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#FDE68A',
   },
   countdownText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#B45309',
+    color: '#D97706',
   },
   periodSwitcher: {
     flexDirection: 'row',
     backgroundColor: '#F1F5F9',
-    borderRadius: 10,
+    borderRadius: 12,
     padding: 3,
   },
   periodTab: {
     flex: 1,
-    paddingVertical: 8,
-    borderRadius: 8,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 9,
   },
   periodTabActive: {
-    backgroundColor: colors.surface.white,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    backgroundColor: theme.colors.forest,
   },
   periodTabText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#64748B',
+    color: theme.colors.textSecondary,
   },
   periodTabTextActive: {
-    color: '#059669',
+    color: '#FFFFFF',
     fontWeight: '700',
+  },
+
+  // Main scroll
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 16,
   },
   loadingContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
+    padding: 24,
   },
   loadingText: {
-    fontSize: 13,
-    color: '#64748B',
-    fontWeight: '500',
+    marginTop: 12,
+    fontSize: 14,
+    color: theme.colors.textSecondary,
+    fontWeight: '600',
   },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-  },
+
+  // Podium
   podiumContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'center',
-    marginBottom: spacing.xl,
-    paddingHorizontal: 4,
-    gap: 10,
+    marginBottom: 20,
+    paddingTop: 10,
   },
   podiumColumn: {
     flex: 1,
     alignItems: 'center',
   },
   podiumCol1: {
+    zIndex: 3,
+  },
+  podiumCol2: {
     zIndex: 2,
   },
-  podiumCol2: {},
-  podiumCol3: {},
+  podiumCol3: {
+    zIndex: 1,
+  },
   crownIcon: {
-    fontSize: 20,
+    fontSize: 22,
     marginBottom: 2,
   },
   podiumAvatarWrap: {
     position: 'relative',
     marginBottom: 6,
   },
-  podiumAvatarWrap1: {},
+  podiumAvatarWrap1: {
+    marginBottom: 8,
+  },
   podiumAvatar: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: '#E2E8F0',
+    width: 54,
+    height: 54,
+    borderRadius: 27,
     borderWidth: 2,
-    borderColor: '#CBD5E1',
+    borderColor: '#FFFFFF',
   },
   podiumAvatar1: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 66,
+    height: 66,
+    borderRadius: 33,
     borderWidth: 3,
     borderColor: '#F59E0B',
   },
@@ -488,259 +526,262 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   podiumName: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
-    color: '#1E293B',
+    color: theme.colors.forest,
     textAlign: 'center',
-    maxWidth: 90,
-    marginBottom: 2,
+    maxWidth: 95,
   },
   podiumName1: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '800',
-    color: '#0F172A',
   },
   podiumPoints: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#059669',
-    marginBottom: 4,
+    color: theme.colors.primary,
+    marginTop: 2,
   },
   podiumPoints1: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#059669',
   },
   tierChip: {
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 10,
+    borderRadius: 6,
+    marginTop: 4,
     marginBottom: 8,
   },
   tierChipText: {
     fontSize: 9,
     fontWeight: '700',
   },
-  podiumEmpty: {
-    height: 100,
-  },
   podiumBase: {
-    width: '100%',
-    backgroundColor: '#E2E8F0',
-    borderTopLeftRadius: 10,
-    borderTopRightRadius: 10,
+    width: '92%',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
+    borderTopLeftRadius: 10,
+    borderTopRightRadius: 10,
+    paddingVertical: 8,
   },
   podiumBase1: {
-    height: 90,
-    backgroundColor: '#D1FAE5',
-    borderTopWidth: 2,
-    borderColor: '#10B981',
+    height: 72,
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
   },
   podiumBase2: {
-    height: 70,
+    height: 52,
     backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   podiumBase3: {
-    height: 55,
-    backgroundColor: '#F1F5F9',
+    height: 40,
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FFEDD5',
   },
   podiumBaseRank: {
     fontSize: 12,
-    fontWeight: '700',
-    color: '#475569',
+    fontWeight: '800',
+    color: theme.colors.forest,
   },
   podiumBaseRank1: {
     fontSize: 13,
-    fontWeight: '800',
-    color: '#065F46',
   },
+  podiumEmpty: {
+    height: 40,
+  },
+
+  // My Rank Highlight
+  myRankCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F0FDF4',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: theme.colors.primary,
+    marginBottom: 16,
+    ...theme.shadows.card,
+  },
+  myRankLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  myRankBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  myRankNum: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  myRankTextWrap: {},
+  myRankTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: theme.colors.forest,
+  },
+  myRankSub: {
+    fontSize: 12,
+    color: theme.colors.primary,
+    fontWeight: '600',
+  },
+  myRankPointsCol: {
+    alignItems: 'flex-end',
+  },
+  myRankPoints: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: theme.colors.forest,
+  },
+  myRankReports: {
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+    marginTop: 2,
+  },
+
+  // List
   listSectionHeader: {
-    marginBottom: spacing.md,
+    marginBottom: 10,
   },
   listSectionTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#0F172A',
+    color: theme.colors.forest,
   },
   listSectionSubtitle: {
     fontSize: 12,
-    color: '#64748B',
+    color: theme.colors.textSecondary,
     marginTop: 2,
   },
   rankingsList: {
-    gap: 8,
+    gap: 10,
   },
   rankingCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface.white,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 12,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 2,
-    elevation: 1,
+    borderColor: theme.colors.border,
+    ...theme.shadows.card,
   },
   rankingCardCurrent: {
-    borderColor: '#10B981',
+    borderColor: theme.colors.primary,
     backgroundColor: '#F0FDF4',
-    borderWidth: 1.5,
   },
   rankCol: {
     width: 32,
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
   rankNumber: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#64748B',
+    color: theme.colors.textSecondary,
   },
   rankNumberCurrent: {
-    color: '#059669',
+    color: theme.colors.primary,
     fontWeight: '800',
   },
   rowAvatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#E2E8F0',
-    marginRight: 12,
+    marginRight: 10,
   },
-  rowDetails: {
+  rowInfoCol: {
     flex: 1,
   },
-  rowNameWrap: {
+  rowNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
   },
   rowName: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#1E293B',
-    maxWidth: 160,
+    color: theme.colors.forest,
+  },
+  rowNameCurrent: {
+    fontWeight: '800',
   },
   youBadge: {
-    backgroundColor: '#059669',
+    backgroundColor: theme.colors.primary,
     paddingHorizontal: 6,
-    paddingVertical: 1.5,
-    borderRadius: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+    marginLeft: 6,
   },
   youBadgeText: {
     fontSize: 9,
     fontWeight: '800',
     color: '#FFFFFF',
   },
-  rowMetaRow: {
+  rowSubRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    marginTop: 3,
   },
-  tierPill: {
+  rowTierTag: {
     paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
+    paddingVertical: 1,
+    borderRadius: 4,
   },
-  tierPillText: {
-    fontSize: 9,
+  rowTierText: {
+    fontSize: 10,
     fontWeight: '700',
   },
-  streakText: {
+  rowReportsCount: {
     fontSize: 11,
-    fontWeight: '600',
-    color: '#D97706',
+    color: theme.colors.textSecondary,
+    marginLeft: 6,
   },
-  pointsCol: {
+  rowPointsCol: {
     alignItems: 'flex-end',
-    marginLeft: 8,
   },
-  rowPointsValue: {
+  rowPointsVal: {
     fontSize: 15,
     fontWeight: '800',
-    color: '#059669',
+    color: theme.colors.forest,
   },
   rowPointsLabel: {
     fontSize: 10,
+    color: theme.colors.textSecondary,
     fontWeight: '600',
-    color: '#94A3B8',
   },
+
+  // Empty
   emptyCard: {
-    backgroundColor: colors.surface.white,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
     padding: 24,
-    borderRadius: 12,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: theme.colors.border,
+    marginTop: 10,
   },
-  emptyText: {
-    fontSize: 13,
-    color: '#64748B',
-  },
-  stickyUserCard: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#0F172A',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-    borderTopWidth: 2,
-    borderTopColor: '#10B981',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 8,
-  },
-  stickyUserLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  stickyRankBadge: {
-    backgroundColor: '#10B981',
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 8,
-  },
-  stickyRankText: {
-    fontSize: 13,
+  emptyTitle: {
+    fontSize: 16,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: theme.colors.forest,
+    marginTop: 10,
   },
-  stickyUserName: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#F8FAFC',
-  },
-  stickyUserSub: {
-    fontSize: 10,
-    color: '#94A3B8',
-    marginTop: 2,
-  },
-  stickyUserRight: {
-    alignItems: 'flex-end',
-  },
-  stickyPoints: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#34D399',
-  },
-  stickyPointsLabel: {
-    fontSize: 9,
-    fontWeight: '600',
-    color: '#94A3B8',
-    textTransform: 'uppercase',
+  emptySub: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 18,
   },
 });
