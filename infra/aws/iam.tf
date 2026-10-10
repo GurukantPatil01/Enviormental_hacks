@@ -67,6 +67,21 @@ resource "aws_iam_policy" "lambda_ecopulse_policy" {
           "arn:aws:bedrock:${var.aws_region}::foundation-model/*",
           "arn:aws:bedrock:${var.aws_region}:*:inference-profile/*"
         ]
+      },
+      # SQS Queue Access (Buffer & DLQ)
+      {
+        Effect = "Allow"
+        Action = [
+          "sqs:SendMessage",
+          "sqs:ReceiveMessage",
+          "sqs:DeleteMessage",
+          "sqs:GetQueueAttributes",
+          "sqs:ChangeMessageVisibility"
+        ]
+        Resource = [
+          aws_sqs_queue.evidence_queue.arn,
+          aws_sqs_queue.evidence_dlq.arn
+        ]
       }
     ]
   })

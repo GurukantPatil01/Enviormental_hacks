@@ -23,6 +23,14 @@ export interface IObservability {
 }
 
 export class LocalObservability implements IObservability {
+  private recordedMetrics: Array<{
+    name: string;
+    value: number;
+    unit: MetricUnit;
+    dimensions?: MetricDimension[];
+    timestamp: Date;
+  }> = [];
+
   log(level: "debug" | "info" | "warn" | "error", message: string, context?: ObservabilityContext): void {
     const timestamp = new Date().toISOString();
     const meta = context && Object.keys(context).length > 0 ? ` ${JSON.stringify(context)}` : "";
@@ -39,6 +47,21 @@ export class LocalObservability implements IObservability {
   async metric(name: string, value: number, unit: MetricUnit = "Count", dimensions?: MetricDimension[]): Promise<void> {
     const dims = dimensions?.map((d) => `${d.name}=${d.value}`).join(", ") ?? "";
     console.log(`[METRIC] ${name}: ${value} ${unit}${dims ? ` (${dims})` : ""}`);
+    this.recordedMetrics.push({
+      name,
+      value,
+      unit,
+      dimensions,
+      timestamp: new Date(),
+    });
+  }
+
+  getRecordedMetrics() {
+    return [...this.recordedMetrics];
+  }
+
+  clearMetrics() {
+    this.recordedMetrics = [];
   }
 
   async trace<T>(name: string, fn: () => Promise<T>, context?: ObservabilityContext): Promise<T> {
@@ -85,6 +108,7 @@ export class CloudWatchObservability implements IObservability {
   }
 
   async metric(name: string, value: number, unit: MetricUnit = "Count", dimensions?: MetricDimension[]): Promise<void> {
+    this.fallback.metric(name, value, unit, dimensions);
     try {
       const command = new PutMetricDataCommand({
         Namespace: this.namespace,
@@ -102,8 +126,15 @@ export class CloudWatchObservability implements IObservability {
     } catch (err) {
       // In local or unconfigured AWS environments, fallback gracefully without throwing
       this.fallback.log("warn", `CloudWatch PutMetricData skipped: ${err instanceof Error ? err.message : String(err)}`);
-      await this.fallback.metric(name, value, unit, dimensions);
     }
+  }
+
+  getRecordedMetrics() {
+    return this.fallback.getRecordedMetrics();
+  }
+
+  clearMetrics() {
+    this.fallback.clearMetrics();
   }
 
   async trace<T>(name: string, fn: () => Promise<T>, context?: ObservabilityContext): Promise<T> {
@@ -127,3 +158,16 @@ export class CloudWatchObservability implements IObservability {
     }
   }
 }
+
+export function createObservability(): IObservability & { getRecordedMetrics?: () => any; clearMetrics?: () => void } {
+  const isAws =
+    (process.env.APP_ENV || "").toLowerCase() === "aws" ||
+    process.env.OBSERVABILITY_PROVIDER === "cloudwatch";
+  if (isAws) {
+    return new CloudWatchObservability();
+  }
+  return new LocalObservability();
+}
+
+export const observability = createObservability();
+

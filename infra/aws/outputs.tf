@@ -37,3 +37,24 @@ output "hotspot_processor_lambda_arn" {
   description = "ARN of the hotspotProcessor Lambda"
   value       = aws_lambda_function.hotspot_processor.arn
 }
+
+output "sqs_evidence_queue_url" {
+  description = "URL of the primary SQS evidence processing queue"
+  value       = aws_sqs_queue.evidence_queue.url
+}
+
+output "sqs_evidence_queue_arn" {
+  description = "ARN of the primary SQS evidence processing queue"
+  value       = aws_sqs_queue.evidence_queue.arn
+}
+
+output "sqs_evidence_dlq_url" {
+  description = "URL of the SQS evidence dead-letter queue"
+  value       = aws_sqs_queue.evidence_dlq.url
+}
+
+output "sqs_evidence_dlq_arn" {
+  description = "ARN of the SQS evidence dead-letter queue"
+  value       = aws_sqs_queue.evidence_dlq.arn
+}
+
