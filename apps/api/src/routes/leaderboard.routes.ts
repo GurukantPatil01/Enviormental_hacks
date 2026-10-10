@@ -16,8 +16,7 @@ async function optionalAuthenticate(request: FastifyRequest) {
 }
 
 export async function leaderboardRoutes(app: FastifyInstance) {
-  // Get Monthly (or all-time) Leaderboard
-  app.get('/leaderboard', async (request, reply) => {
+  const handleGetLeaderboard = async (request: FastifyRequest, reply: any) => {
     try {
       await optionalAuthenticate(request);
       const query = getLeaderboardQuerySchema.parse(request.query);
@@ -29,14 +28,19 @@ export async function leaderboardRoutes(app: FastifyInstance) {
         currentUserId: request.user?.id,
       });
 
-      return reply.send({ data: result });
+      return reply.send({ success: true, data: result });
     } catch (err: any) {
       return reply.status(err.statusCode || 500).send({
+        success: false,
         error: {
           code: err.code || 'LEADERBOARD_ERROR',
           message: err.message,
         },
       });
     }
-  });
+  };
+
+  // Support both root-relative and /api prefixed routes (for reverse proxies like Vite)
+  app.get('/leaderboard', handleGetLeaderboard);
+  app.get('/api/leaderboard', handleGetLeaderboard);
 }

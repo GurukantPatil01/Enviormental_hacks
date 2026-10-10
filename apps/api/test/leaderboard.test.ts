@@ -62,6 +62,15 @@ describe('EcoPulse Monthly Leaderboard System Tests', () => {
     expect(topEntry.monthlyPoints).toBeGreaterThanOrEqual(0);
     expect(topEntry.tier).toBeDefined();
     expect(['Eco Champion', 'Green Guardian', 'Civic Steward', 'Eco Pioneer', 'Active Resident']).toContain(topEntry.tier);
+
+    // Also verify /api/leaderboard proxy endpoint
+    const apiRes = await app.inject({
+      method: 'GET',
+      url: '/api/leaderboard',
+    });
+    expect(apiRes.statusCode).toBe(200);
+    expect(apiRes.json().success).toBe(true);
+    expect(apiRes.json().data.period).toBe('monthly');
   });
 
   it('2. should rank residents descending by monthly points', async () => {

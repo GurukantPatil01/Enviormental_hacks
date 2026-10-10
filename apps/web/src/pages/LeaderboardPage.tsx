@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { useLeaderboard } from '../hooks/useLeaderboard';
 import { MetricCard } from '../components/common/MetricCard';
-import type { LeaderboardPeriod, LeaderboardTier } from '@ecopulse/types';
+import type { LeaderboardPeriod, LeaderboardTier, LeaderboardResponse, LeaderboardEntry } from '@ecopulse/types';
 
 function getTierBadgeClass(tier: LeaderboardTier): string {
   switch (tier) {
@@ -37,7 +37,15 @@ export const LeaderboardPage: React.FC = () => {
 
   const { data, isLoading, error, refetch, isFetching } = useLeaderboard({ period });
 
-  const entries = data?.entries || [];
+  const rawData = data as any;
+  const leaderboard: LeaderboardResponse | undefined =
+    rawData && rawData.data && Array.isArray(rawData.data.entries)
+      ? rawData.data
+      : rawData && Array.isArray(rawData.entries)
+      ? rawData
+      : undefined;
+
+  const entries = leaderboard?.entries || [];
   const filteredEntries = entries.filter((e) =>
     e.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (e.communityName && e.communityName.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -57,10 +65,10 @@ export const LeaderboardPage: React.FC = () => {
               <Sparkles className="w-3 h-3" />
               Automated Monthly Refresh Cycle
             </span>
-            {data && (
+            {leaderboard && (
               <span className="px-2 py-0.5 rounded text-[10px] font-mono tracking-wider font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center gap-1">
                 <Clock className="w-3 h-3" />
-                Resets in {data.daysRemaining} days
+                Resets in {leaderboard.daysRemaining} days
               </span>
             )}
           </div>
@@ -85,7 +93,7 @@ export const LeaderboardPage: React.FC = () => {
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              {data?.month || 'This Month'}
+              {leaderboard?.month || 'This Month'}
             </button>
             <button
               onClick={() => setPeriod('all_time')}
@@ -114,25 +122,25 @@ export const LeaderboardPage: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
           label="Active Cycle"
-          value={data?.month || 'Current Month'}
-          subtext={`Next refresh: ${data?.nextResetDate ? new Date(data.nextResetDate).toLocaleDateString() : '—'}`}
+          value={leaderboard?.month || 'Current Month'}
+          subtext={`Next refresh: ${leaderboard?.nextResetDate ? new Date(leaderboard.nextResetDate).toLocaleDateString() : '—'}`}
           icon={<Calendar className="w-4 h-4 text-emerald-400" />}
         />
         <MetricCard
           label="Monthly Points Credited"
-          value={data?.totalPointsAwardedThisMonth?.toLocaleString() || '0'}
+          value={leaderboard?.totalPointsAwardedThisMonth?.toLocaleString() || '0'}
           subtext="Earned across all verified reports"
           icon={<Sparkles className="w-4 h-4 text-amber-400" />}
         />
         <MetricCard
           label="Contributing Citizens"
-          value={data?.totalParticipants || 0}
+          value={leaderboard?.totalParticipants || 0}
           subtext="Active community participants"
           icon={<Users className="w-4 h-4 text-cyan-400" />}
         />
         <MetricCard
           label="Cycle Status"
-          value={data ? `${data.daysRemaining} Days Left` : 'Active'}
+          value={leaderboard ? `${leaderboard.daysRemaining} Days Left` : 'Active'}
           subtext="Real-time ledger aggregation"
           icon={<ShieldCheck className="w-4 h-4 text-emerald-400" />}
         />
