@@ -36,6 +36,7 @@ build/
 *.key
 *.mobileprovision
 *.orig.*
+*.apk
 
 # Fastify uploads (keep dir via .gitkeep)
 apps/api/uploads/*

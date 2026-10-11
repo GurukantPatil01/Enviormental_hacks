@@ -12,11 +12,12 @@ import { ImpactAnalytics } from './pages/ImpactAnalytics';
 import { LeaderboardPage } from './pages/LeaderboardPage';
 import { SystemStatus } from './pages/SystemStatus';
 import { SettingsPage } from './pages/SettingsPage';
+import { WelcomePage } from './pages/WelcomePage';
 
 export const App: React.FC = () => {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/operations" replace />} />
+      <Route path="/" element={<WelcomePage />} />
       <Route element={<OperationsShell />}>
         <Route path="/operations" element={<CommandCenter />} />
         <Route path="/operations/map" element={<EnvironmentalMapPage />} />

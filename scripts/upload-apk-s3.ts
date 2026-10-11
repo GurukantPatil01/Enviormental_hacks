@@ -27,7 +27,10 @@ const s3 = new S3Client({
 });
 
 async function uploadApk() {
-  const apkPath = path.resolve(repoRoot, 'apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk');
+  let apkPath = path.resolve(repoRoot, 'ecopulse.apk');
+  if (!fs.existsSync(apkPath)) {
+    apkPath = path.resolve(repoRoot, 'apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk');
+  }
   
   if (!fs.existsSync(apkPath)) {
     console.error(`❌ APK file not found at: ${apkPath}`);
