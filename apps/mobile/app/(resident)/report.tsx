@@ -171,7 +171,7 @@ export default function ReportScreen() {
         mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
-        quality: 0.75,
+        quality: 0.55,
         base64: true,
       });
 
@@ -205,7 +205,7 @@ export default function ReportScreen() {
         mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
-        quality: 0.75,
+        quality: 0.55,
         base64: true,
       });
 

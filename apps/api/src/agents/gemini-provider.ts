@@ -31,8 +31,8 @@ export class GeminiVisionProvider implements VisionAIProvider {
     this.modelName =
       options?.model ||
       process.env.GEMINI_MODEL ||
-      'gemini-3.8-flash';
-    this.timeoutMs = options?.timeoutMs || 25000;
+      'gemini-3.5-flash-lite';
+    this.timeoutMs = options?.timeoutMs || 20000;
     this.maxRetries = options?.maxRetries ?? 2;
     this.mockClient = options?.mockClient || null;
 
@@ -176,15 +176,22 @@ Location context: ${input.locationAddress || 'Municipal public area'}.
 Reported category hint: ${input.categoryHint || 'None provided'}.
 
 CRITICAL RULES:
-1. Strictly report only what is visibly present in the image.
-2. DO NOT fabricate coordinates, exact weight, responsible individuals, civic citations, or cleanup costs that cannot be directly proven from the photo.
-3. If the image is blurry, dark, unreadable, obscured, poor quality, or ambiguous, you MUST set evidenceQuality to "LOW", "BLURRY_UNREADABLE", "POOR", or "INCONCLUSIVE", set wasteDetected to "uncertain", set requiresHumanReview to true, and explain the limitation.
-4. If the image shows a clean area (e.g. clean street, clean park, tidy room, computer/phone screen capture without actual outdoor waste), set wasteDetected to false, wasteCategory to "NO_CLEAR_ISSUE", visibleSeverity to "LOW", and wastePresence to "NONE".
-5. If solid waste is clearly visible, set wasteDetected to true, and classify wasteCategory and visibleSeverity accurately.
-6. Provide an honest, non-fabricated confidence score between 0.0 and 1.0 reflecting how clear and unambiguous the visual evidence is. If the image is unclear, blurry, or obscured, confidence must be low (<0.70) and requiresHumanReview must be true. Do NOT invent high confidence scores.
-7. Set potentialObstruction to "SIDEWALK", "STORM_DRAIN", "ROADWAY", "MULTIPLE", or "NONE" if waste is blocking public right-of-way.
-8. Provide a clear, factual explanation describing the visual rationale for your classification.
-9. Return your output strictly as a JSON object matching this structure:
+1. SOLID WASTE IDENTIFICATION: You MUST set wasteDetected to true whenever any solid waste, garbage, trash, litter, refuse, debris, or sanitation receptacles requiring attention are visible. This includes:
+   - Municipal dustbins, dumpsters, wheelie bins, public trash cans, or collection points (whether overflowing, full, open, or surrounded by trash).
+   - Garbage bags, shopping bags containing rubbish, bundled waste, or discarded sacks.
+   - Scattered or loose litter: plastic bottles, food containers, wrappers, drink cups, paper, cardboard, cans, cartons, or discarded personal items on roads, sidewalks, gutters, floors, or ground.
+   - Piles of waste, illegal dumping, construction debris, demolition rubble, scrap metal, or abandoned materials.
+   - Blocked drainage grates, runoff ditches containing trash, or water bodies with floating refuse.
+2. CLEAN ENVIRONMENT (NO WASTE): Set wasteDetected to false, wasteCategory to "NO_CLEAR_ISSUE", visibleSeverity to "LOW", and wastePresence to "NONE" ONLY if the scene is genuinely clean and completely devoid of trash, discarded refuse, and waste bins (e.g., a completely clean street with zero litter, an empty clean park lawn, an indoor room/desk with clean personal belongings and no trash, a portrait/selfie, or a clean screenshot).
+3. UNCERTAIN / INCONCLUSIVE EVIDENCE: If the image is extremely dark, out-of-focus, completely blurry, or corrupt such that visual content cannot be determined, set evidenceQuality to "BLURRY_UNREADABLE", "POOR", or "INCONCLUSIVE", set wasteDetected to "uncertain", set requiresHumanReview to true, and explain the limitation.
+4. OBJECTIVE SEVERITY & VOLUME:
+   - LOW: Single/few scattered litter items or small closed trash bin.
+   - MEDIUM: Moderate pile of waste, localized cluster of litter, or full trash receptacle.
+   - HIGH: Large accumulation, overflowing bin with debris spilling onto walkway, or significant illegal dump.
+   - CRITICAL: Massive illegal dumping, hazardous/medical waste, or waste completely blocking roads/storm drains.
+5. NO FABRICATION: Strictly report only what is visibly present in the image. DO NOT fabricate coordinates, exact weight, responsible individuals, vehicle registrations, civic citations, or cleanup costs that cannot be directly proven from the photo.
+6. Set potentialObstruction to "SIDEWALK", "STORM_DRAIN", "ROADWAY", "MULTIPLE", or "NONE" if waste is blocking public right-of-way.
+7. Return your output strictly as a JSON object matching this structure:
 {
   "wasteDetected": boolean or "uncertain",
   "wastePresence": "NONE" | "LOW" | "MODERATE" | "SIGNIFICANT" | "OVERWHELMING",
@@ -281,81 +288,104 @@ CRITICAL RULES:
     imageBuffer: Buffer,
     mimeType: string
   ): Promise<any> {
-    let attempt = 0;
+    const candidateModels = [
+      this.modelName,
+      'gemini-3.5-flash-lite',
+      'gemini-3.5-flash',
+    ].filter((m, idx, arr) => Boolean(m) && arr.indexOf(m) === idx);
+
     let lastError: any = null;
 
-    while (attempt <= this.maxRetries) {
-      try {
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error(`Gemini Vision request timed out after ${this.timeoutMs}ms`)), this.timeoutMs)
-        );
+    for (const modelToUse of candidateModels) {
+      let attempt = 0;
+      while (attempt <= this.maxRetries) {
+        try {
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(
+              () => reject(new Error(`Gemini Vision request timed out after ${this.timeoutMs}ms`)),
+              this.timeoutMs
+            )
+          );
 
-        const executionPromise = (async () => {
-          const contents = [
-            {
-              role: 'user',
-              parts: [
-                { text: prompt },
-                {
-                  inlineData: {
-                    mimeType,
-                    data: imageBuffer.toString('base64'),
+          const executionPromise = (async () => {
+            const contents = [
+              {
+                role: 'user',
+                parts: [
+                  { text: prompt },
+                  {
+                    inlineData: {
+                      mimeType,
+                      data: imageBuffer.toString('base64'),
+                    },
                   },
-                },
-              ],
-            },
-          ];
+                ],
+              },
+            ];
 
-          const response = await this.client!.models.generateContent({
-            model: this.modelName,
-            contents,
-            config: {
-              responseMimeType: 'application/json',
-            },
-          });
+            const response = await this.client!.models.generateContent({
+              model: modelToUse,
+              contents,
+              config: {
+                responseMimeType: 'application/json',
+                temperature: 0.1,
+              },
+            });
 
-          const text = response.text || '';
-          if (!text) {
-            throw new Error('Gemini returned an empty response');
+            const text = response.text || '';
+            if (!text) {
+              throw new Error('Gemini returned an empty response');
+            }
+
+            const cleanJson = text
+              .replace(/^```json\s*/i, '')
+              .replace(/^```\s*/i, '')
+              .replace(/\s*```$/i, '')
+              .trim();
+
+            this.modelName = modelToUse;
+            return JSON.parse(cleanJson);
+          })();
+
+          return await Promise.race([executionPromise, timeoutPromise]);
+        } catch (err: any) {
+          lastError = err;
+          attempt++;
+
+          const isQuotaExhausted =
+            err.status === 429 ||
+            err.status === 404 ||
+            err.message?.includes('429') ||
+            err.message?.includes('404') ||
+            err.message?.includes('RESOURCE_EXHAUSTED') ||
+            err.message?.includes('not found') ||
+            err.message?.includes('no longer available');
+
+          if (isQuotaExhausted && candidateModels.indexOf(modelToUse) < candidateModels.length - 1) {
+            console.warn(
+              `[GeminiVisionProvider] Model ${modelToUse} exhausted or unavailable (${err.message}). Trying fallback model...`
+            );
+            break;
           }
 
-          // Strip markdown code fences if model enclosed JSON
-          const cleanJson = text
-            .replace(/^```json\s*/i, '')
-            .replace(/^```\s*/i, '')
-            .replace(/\s*```$/i, '')
-            .trim();
+          const isTimeout = err.message?.includes('timed out');
+          const isTransient =
+            err.status === 503 ||
+            err.status === 500 ||
+            err.message?.includes('network') ||
+            err.message?.includes('fetch failed');
 
-          return JSON.parse(cleanJson);
-        })();
+          if ((isTimeout || isTransient) && attempt <= this.maxRetries) {
+            const backoffMs = attempt * 800;
+            console.warn(
+              `[GeminiVisionProvider] Attempt ${attempt} failed (${err.message}). Retrying in ${backoffMs}ms...`
+            );
+            await new Promise((r) => setTimeout(r, backoffMs));
+            continue;
+          }
 
-        return await Promise.race([executionPromise, timeoutPromise]);
-      } catch (err: any) {
-        lastError = err;
-        attempt++;
-
-        // Don't retry client errors, schema errors, or image validation errors
-        const isRateLimit =
-          err.status === 429 ||
-          err.message?.includes('429') ||
-          err.message?.includes('RESOURCE_EXHAUSTED');
-        const isTimeout = err.message?.includes('timed out');
-        const isTransient =
-          err.status === 503 ||
-          err.status === 500 ||
-          err.message?.includes('network') ||
-          err.message?.includes('fetch failed');
-
-        if ((isRateLimit || isTimeout || isTransient) && attempt <= this.maxRetries) {
-          const backoffMs = attempt * 1000;
-          console.warn(
-            `[GeminiVisionProvider] Attempt ${attempt} failed (${err.message}). Retrying in ${backoffMs}ms...`
-          );
-          await new Promise((r) => setTimeout(r, backoffMs));
-          continue;
+          break;
         }
-
-        break;
       }
     }
 

@@ -73,9 +73,9 @@ export class ScoringAgent {
       dumpingLikelihood: dumpingAnalysis?.dumpingLikelihood,
     });
 
-    // 4. Generate structured scoring analysis (via Gemini if available, else deterministic ADK)
+    // 4. Generate structured scoring analysis (instant deterministic ADK rules or optional LLM chaining)
     let scoringAnalysis: ScoringAnalysis;
-    if (this.client && process.env.AI_ENABLED !== 'false') {
+    if (this.client && process.env.LLM_CHAINING_ENABLED === 'true') {
       try {
         scoringAnalysis = await this.executeGeminiScoring(params, calculatedScore, safety);
       } catch (err: any) {

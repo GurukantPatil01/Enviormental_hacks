@@ -32,9 +32,9 @@ export class DumpingAnalysisAgent {
     // 1. Tool Call: Query spatial hotspot history
     const hotspotContext = await checkHotspotHistoryTool(latitude, longitude);
 
-    // 2. Execute with Google GenAI if credentials exist, else fallback to deterministic ADK logic
+    // 2. High-speed deterministic ADK synthesis using multimodal observation and spatial context
     let result: DumpingAnalysis;
-    if (this.client && process.env.AI_ENABLED !== 'false') {
+    if (this.client && process.env.LLM_CHAINING_ENABLED === 'true') {
       try {
         result = await this.executeGeminiADK(input, hotspotContext);
       } catch (err: any) {
