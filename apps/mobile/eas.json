@@ -13,7 +13,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://localhost:4000"
+        "EXPO_PUBLIC_API_URL": "https://thee-float-tiring.ngrok-free.dev"
       }
     },
     "production": {
