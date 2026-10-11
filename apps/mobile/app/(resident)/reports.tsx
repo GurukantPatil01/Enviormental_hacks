@@ -21,7 +21,7 @@ type FilterType = 'ALL' | 'PROCESSING' | 'ANALYZED' | 'REVIEW' | 'RESOLVED';
 
 export default function MyReportsScreen() {
   const router = useRouter();
-  const { user, setUser } = useAuthStore();
+  const { user } = useAuthStore();
   const [activeFilter, setActiveFilter] = useState<FilterType>('ALL');
 
   // Self-heal and sync user state across reseeds
@@ -32,10 +32,13 @@ export default function MyReportsScreen() {
   });
 
   useEffect(() => {
-    if (userData?.user?.id && userData.user.id !== user?.id) {
-      setUser(userData.user);
+    if (userData?.user && userData.user.id !== user?.id) {
+      const state = useAuthStore.getState();
+      if (state.token && typeof state.setAuth === 'function') {
+        state.setAuth(state.token, userData.user);
+      }
     }
-  }, [userData, user?.id, setUser]);
+  }, [userData?.user?.id, user?.id]);
 
   const activeUserId = userData?.user?.id || user?.id;
 
