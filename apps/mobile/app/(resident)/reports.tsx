@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -21,8 +21,23 @@ type FilterType = 'ALL' | 'PROCESSING' | 'ANALYZED' | 'REVIEW' | 'RESOLVED';
 
 export default function MyReportsScreen() {
   const router = useRouter();
-  const { user } = useAuthStore();
+  const { user, setUser } = useAuthStore();
   const [activeFilter, setActiveFilter] = useState<FilterType>('ALL');
+
+  // Self-heal and sync user state across reseeds
+  const { data: userData } = useQuery({
+    queryKey: ['me-profile'],
+    queryFn: () => api.auth.me(),
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    if (userData?.user?.id && userData.user.id !== user?.id) {
+      setUser(userData.user);
+    }
+  }, [userData, user?.id, setUser]);
+
+  const activeUserId = userData?.user?.id || user?.id;
 
   const {
     data: reports = [],
@@ -30,9 +45,25 @@ export default function MyReportsScreen() {
     isRefetching,
     refetch,
   } = useQuery({
-    queryKey: ['my-reports', user?.id],
-    queryFn: () => api.reports.list({ userId: user?.id }),
-    enabled: !!user?.id,
+    queryKey: ['my-reports', activeUserId],
+    queryFn: () => api.reports.list(activeUserId ? { userId: activeUserId } : undefined),
+    refetchInterval: (query) => {
+      // Auto-poll while any report is pending or processing
+      const list = query.state.data;
+      if (
+        Array.isArray(list) &&
+        list.some(
+          (r: any) =>
+            r.status === 'SUBMITTED' ||
+            r.status === 'PENDING' ||
+            r.status === 'PROCESSING' ||
+            r.status === 'IN_PROGRESS'
+        )
+      ) {
+        return 3000;
+      }
+      return false;
+    },
   });
 
   // Calculate live filter counts

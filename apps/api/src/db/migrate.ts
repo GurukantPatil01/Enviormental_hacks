@@ -327,7 +327,8 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS provider VARCHAR(50) DEFAULT 'MOCK' NOT NULL;
       ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS model VARCHAR(100) DEFAULT 'mock-vision-v1' NOT NULL;
       ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP WITH TIME ZONE;
-      ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS input_reference VARCHAR(255);
+      ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS input_reference TEXT;
+      ALTER TABLE agent_runs ALTER COLUMN input_reference TYPE TEXT;
       ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS output_reference JSONB;
       ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS error TEXT;
       ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS metadata JSONB;
