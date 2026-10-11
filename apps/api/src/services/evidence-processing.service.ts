@@ -136,7 +136,13 @@ export class EvidenceProcessingService {
           }
 
           // Verify image is actually in storage before model inference
-          const lookupTarget = storageKey || mediaUrl;
+          let lookupTarget = storageKey || mediaUrl;
+          if (lookupTarget && lookupTarget.startsWith('/uploads/')) {
+            lookupTarget = lookupTarget.replace(/^\/uploads\//, '');
+          } else if (lookupTarget && lookupTarget.startsWith('uploads/')) {
+            lookupTarget = lookupTarget.replace(/^uploads\//, '');
+          }
+
           if (lookupTarget && !lookupTarget.startsWith('data:')) {
             try {
               const buffer = await storageService.getEvidence(lookupTarget);
@@ -311,6 +317,29 @@ export class EvidenceProcessingService {
             } catch (dbErr) {
               console.error('[EvidencePipeline] Error updating environmental events and AI observations:', dbErr);
             }
+
+            try {
+              const visionData =
+                (observation as any).bedrockAnalysis ||
+                (observation as any).geminiAnalysis ||
+                (observation as any).visionAnalysis;
+              const scoringAnalysis = (recommendation as any)?.scoringAnalysis;
+              const needsHumanReview =
+                Boolean(visionData?.requiresHumanReview) ||
+                Boolean((observation as any)?.requiresHumanReview) ||
+                Boolean(scoringAnalysis?.requiresHumanReview);
+              const targetReportStatus = needsHumanReview ? 'REVIEW_REQUIRED' : 'ANALYZED';
+              await reportRepository.updateStatus(reportId, targetReportStatus as any);
+
+              if (evidenceId) {
+                await reportRepository.updateEvidenceStatus(
+                  evidenceId,
+                  needsHumanReview ? 'PENDING' : 'VERIFIED'
+                );
+              }
+            } catch (repErr) {
+              console.error('[EvidencePipeline] Error updating report and evidence status:', repErr);
+            }
           }
 
           await observability.metric('Evidence.Processed', 1, 'Count', [
@@ -326,6 +355,7 @@ export class EvidenceProcessingService {
             severity: observation.severity,
           });
         } catch (err: any) {
+          console.error('[EvidencePipeline Full Error]:', err);
           observability.log('error', `[EvidencePipeline] Failure processing evidence ${evidenceId}: ${err.message}`, {
             evidenceId,
             reportId: reportId ?? undefined,

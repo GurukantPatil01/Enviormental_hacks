@@ -41,6 +41,15 @@ export default function HomeScreen() {
     await Promise.all([refetch(), refetchReports()]);
   };
 
+  React.useEffect(() => {
+    if (dashboardData?.user && dashboardData.user.id !== user?.id) {
+      const token = useAuthStore.getState().token;
+      if (token) {
+        useAuthStore.getState().setAuth(token, dashboardData.user);
+      }
+    }
+  }, [dashboardData?.user?.id, user?.id]);
+
   const impact = dashboardData?.impactStats || {
     reportsCount: userReports.length,
     verifiedCount: userReports.filter(

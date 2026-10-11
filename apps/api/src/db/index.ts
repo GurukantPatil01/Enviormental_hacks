@@ -1,17 +1,7 @@
-import dotenv from 'dotenv';
+import '../env.js';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as schema from './schema.js';
-
-import path from 'path';
-
-// Ensure .env is loaded whether run from repo root or app subfolder
-dotenv.config();
-if (typeof __dirname !== 'undefined') {
-  dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
-} else {
-  dotenv.config({ path: path.resolve(process.cwd(), '../../.env') });
-}
 
 const connectionString =
   process.env.DATABASE_URL || 'postgres://gurukantpatil@localhost:5432/ecopulse';

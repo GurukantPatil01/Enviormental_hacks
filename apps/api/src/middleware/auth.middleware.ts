@@ -1,5 +1,6 @@
 import type { UserRole } from '@ecopulse/types';
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { userRepository } from '../repositories/user.repository.js';
 
 declare module '@fastify/jwt' {
   interface FastifyJWT {
@@ -22,7 +23,23 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
 
     const token = authHeader.substring(7);
     const decoded = request.server.jwt.verify<{ id: string; email: string; role: UserRole }>(token);
-    request.user = decoded;
+    
+    // Resolve user by id or email to protect against reseeded IDs
+    let user = await userRepository.findById(decoded.id);
+    if (!user && decoded.email) {
+      user = await userRepository.findByEmail(decoded.email);
+    }
+
+    if (!user) {
+      return reply.status(401).send({
+        error: {
+          code: 'INVALID_TOKEN',
+          message: 'User account not found. Please log in again.',
+        },
+      });
+    }
+
+    request.user = { id: user.id, email: user.email, role: user.role as UserRole };
   } catch (err) {
     return reply.status(401).send({
       error: {

@@ -52,6 +52,7 @@ export const ReportDetailPanel: React.FC<ReportDetailPanelProps> = ({
     try {
       await apiFetch(`/api/intelligence/events/${report.id}/reprocess`, {
         method: 'POST',
+        body: JSON.stringify({}),
       });
       setReprocessStatus('Vision AI re-analysis completed successfully.');
       await refetchEventDetails();

@@ -18,16 +18,20 @@ export interface CreateAgentRunInput {
 
 export class AgentRunRepository {
   async create(data: CreateAgentRunInput): Promise<AgentRun> {
+    const cleanInputRef = data.inputReference
+      ? (data.inputReference.includes('?') ? data.inputReference.split('?')[0] : data.inputReference).substring(0, 250)
+      : null;
+
     const [row] = await db
       .insert(agentRuns)
       .values({
-        agentType: data.agentType,
-        entityType: data.entityType,
-        entityId: data.entityId,
-        provider: data.provider,
-        model: data.model,
+        agentType: (data.agentType || 'VISION').substring(0, 50),
+        entityType: (data.entityType || 'EVIDENCE').substring(0, 50),
+        entityId: (data.entityId || 'unknown').substring(0, 255),
+        provider: (data.provider || 'MOCK').substring(0, 50),
+        model: (data.model || 'mock-vision-v1').substring(0, 100),
         status: data.status || 'RUNNING',
-        inputReference: data.inputReference,
+        inputReference: cleanInputRef,
         outputReference: data.outputReference,
         error: data.error,
         metadata: data.metadata,

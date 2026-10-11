@@ -5,6 +5,7 @@ import { db } from '../db/index.js';
 import { environmentalEvents } from '../db/schema.js';
 import { eventBus } from '../events/event-bus.js';
 import { reportRepository } from '../repositories/report.repository.js';
+import { communityRepository } from '../repositories/community.repository.js';
 import { evidenceStorage } from './storage.service.js';
 
 export interface CreateReportParams {
@@ -43,10 +44,27 @@ export class ReportService {
 
     const initialStatus: ReportStatus = params.isDraft ? 'DRAFT' : 'SUBMITTED';
 
+    // Verify community exists, fallback to active community if client has stale ID
+    let communityId = params.communityId;
+    if (communityId) {
+      const comm = await communityRepository.findById(communityId);
+      if (!comm) {
+        const defaultComm = await communityRepository.findBySlug('pune-green-community');
+        if (defaultComm) {
+          communityId = defaultComm.id;
+        }
+      }
+    } else {
+      const defaultComm = await communityRepository.findBySlug('pune-green-community');
+      if (defaultComm) {
+        communityId = defaultComm.id;
+      }
+    }
+
     // 2. Persist report record
     const report = await reportRepository.create({
       userId: params.userId,
-      communityId: params.communityId,
+      communityId,
       category: params.category,
       title: params.title,
       description: params.description,

@@ -57,6 +57,12 @@ export class CommunityRepository {
     };
   }
 
+  async findBySlug(slug: string): Promise<Community | null> {
+    const [c] = await db.select().from(communities).where(eq(communities.slug, slug));
+    if (!c) return null;
+    return this.findById(c.id);
+  }
+
   async findUserCommunity(userId: string): Promise<Community | null> {
     const [membership] = await db
       .select()

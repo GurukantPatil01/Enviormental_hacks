@@ -5,14 +5,18 @@ import { reportRepository } from '../repositories/report.repository.js';
 import { getAIProvider, type IAIProvider, type VisionAnalysisInput } from './ai-provider.js';
 
 export class VisionAgent {
-  private aiProvider: IAIProvider;
+  private explicitProvider?: IAIProvider;
 
   constructor(provider?: IAIProvider) {
-    this.aiProvider = provider || getAIProvider();
+    this.explicitProvider = provider;
   }
 
   setProvider(provider: IAIProvider): void {
-    this.aiProvider = provider;
+    this.explicitProvider = provider;
+  }
+
+  getProvider(): IAIProvider {
+    return this.explicitProvider || getAIProvider();
   }
 
   async analyzeEvidence(input: VisionAnalysisInput): Promise<VisionObservation> {
@@ -20,6 +24,8 @@ export class VisionAgent {
   }
 
   async analyze(input: VisionAnalysisInput): Promise<VisionObservation> {
+    const provider = this.getProvider();
+
     // 1. Idempotency Check: if this evidence already has a completed run, return cached output
     const existingRun = await agentRunRepository.findByEntityAndType(input.evidenceId, 'VISION');
     if (existingRun && existingRun.status === 'COMPLETED' && existingRun.outputReference) {
@@ -33,8 +39,8 @@ export class VisionAgent {
       input.evidenceId,
       {
         evidenceId: input.evidenceId,
-        provider: this.aiProvider.getProviderName(),
-        model: this.aiProvider.getModelName(),
+        provider: provider.getProviderName(),
+        model: provider.getModelName(),
       }
     );
 
@@ -43,8 +49,8 @@ export class VisionAgent {
       agentType: 'VISION',
       entityType: 'EVIDENCE',
       entityId: input.evidenceId,
-      provider: this.aiProvider.getProviderName(),
-      model: this.aiProvider.getModelName(),
+      provider: provider.getProviderName(),
+      model: provider.getModelName(),
       status: 'RUNNING',
       inputReference: input.mediaUrl,
       metadata: input.metadata,
@@ -52,7 +58,7 @@ export class VisionAgent {
 
     try {
       // 4. Perform observation via AI Provider
-      const observation = await this.aiProvider.analyzeEvidence(input);
+      const observation = await provider.analyzeEvidence(input);
 
       // 5. Update Agent Run to COMPLETED
       await agentRunRepository.updateStatus(run.id, 'COMPLETED', observation as any);

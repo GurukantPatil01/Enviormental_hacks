@@ -524,7 +524,7 @@ export const agentRuns = pgTable('agent_runs', {
   finalResponse: text('final_response'),
   startedAt: timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
   completedAt: timestamp('completed_at', { withTimezone: true }),
-  inputReference: varchar('input_reference', { length: 255 }),
+  inputReference: text('input_reference'),
   outputReference: jsonb('output_reference'),
   error: text('error'),
   metadata: jsonb('metadata'),

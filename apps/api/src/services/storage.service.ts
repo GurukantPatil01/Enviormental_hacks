@@ -40,10 +40,22 @@ export interface IObjectStorage {
  * Validates object storage key against directory traversal and illegal characters.
  */
 export function validateStorageKey(key: string): string {
-  if (key.includes('..') || key.startsWith('/') || key.startsWith('\\')) {
+  if (!key) {
+    throw new Error(`Invalid storage key: empty key`);
+  }
+  let cleanKey = key.trim();
+  // Strip leading slashes
+  while (cleanKey.startsWith('/') || cleanKey.startsWith('\\')) {
+    cleanKey = cleanKey.substring(1);
+  }
+  // Strip optional 'uploads/' prefix if present
+  if (cleanKey.startsWith('uploads/')) {
+    cleanKey = cleanKey.substring('uploads/'.length);
+  }
+  if (cleanKey.includes('..')) {
     throw new Error(`Invalid storage key: "${key}"`);
   }
-  const sanitized = path.normalize(key);
+  const sanitized = path.normalize(cleanKey);
   if (!sanitized || sanitized === '.' || sanitized.includes('..')) {
     throw new Error(`Invalid storage key: "${key}"`);
   }
