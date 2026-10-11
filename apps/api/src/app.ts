@@ -27,8 +27,18 @@ export function buildApp() {
 
   // CORS
   app.register(cors, {
-    origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    origin: true, // Mirrors request origin (supports localhost:8081, localhost:3000, AWS website, etc.)
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'x-request-id',
+      'ngrok-skip-browser-warning',
+      'Accept',
+      'Origin',
+      'User-Agent',
+    ],
+    credentials: true,
   });
 
   // JWT Authentication

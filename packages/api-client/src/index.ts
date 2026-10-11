@@ -80,6 +80,10 @@ export class EcoPulseClient {
       headers.set('Content-Type', 'application/json');
     }
 
+    if (!headers.has('ngrok-skip-browser-warning')) {
+      headers.set('ngrok-skip-browser-warning', 'true');
+    }
+
     if (this.getToken) {
       const token = await this.getToken();
       if (token && !headers.has('Authorization')) {
