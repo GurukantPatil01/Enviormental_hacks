@@ -1,4 +1,20 @@
-export const API_BASE = '/api';
+function getApiBaseUrl(): string {
+  const metaEnv = (import.meta as any).env;
+  if (metaEnv?.VITE_API_URL) {
+    return metaEnv.VITE_API_URL.replace(/\/$/, '');
+  }
+
+  // When hosted on AWS S3 static website or any non-localhost domain, route to public API
+  if (typeof window !== 'undefined') {
+    if (window.location.hostname.includes('amazonaws.com') || (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')) {
+      return 'https://thee-float-tiring.ngrok-free.dev';
+    }
+  }
+
+  return '';
+}
+
+export const API_BASE = getApiBaseUrl();
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -22,6 +38,7 @@ export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): 
   const token = getAuthToken();
   const headers: Record<string, string> = {
     ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+    'ngrok-skip-browser-warning': 'true',
     ...(options.headers as Record<string, string>),
   };
 
@@ -29,7 +46,12 @@ export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): 
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const url = endpoint.startsWith('http') ? endpoint : endpoint.startsWith('/api') ? endpoint : `${API_BASE}${endpoint}`;
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = cleanEndpoint.startsWith('http')
+    ? cleanEndpoint
+    : API_BASE
+      ? `${API_BASE}${cleanEndpoint}`
+      : cleanEndpoint;
 
   const res = await fetch(url, {
     ...options,
