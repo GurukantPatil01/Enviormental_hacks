@@ -73,20 +73,6 @@ export default function WelcomeScreen() {
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.demoMaintainerButton}
-          onPress={() => handleQuickDemo('MAINTAINER')}
-          activeOpacity={0.8}
-          disabled={Boolean(demoLoading)}
-        >
-          {demoLoading === 'MAINTAINER' ? (
-            <ActivityIndicator color={colors.primary[900]} size="small" />
-          ) : (
-            <Text style={[styles.secondaryButtonText, { color: colors.primary[900], fontWeight: '700' }]}>
-              👷 Quick Launch (Maintainer Demo)
-            </Text>
-          )}
-        </TouchableOpacity>
 
         <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs }}>
           <TouchableOpacity

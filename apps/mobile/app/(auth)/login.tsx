@@ -78,16 +78,6 @@ export default function LoginScreen() {
               <Text style={styles.demoCardSubtitle}>Tap to auto-fill resident citizen credentials</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.demoCard, { borderColor: colors.primary[600], backgroundColor: colors.primary[50] }]}
-              onPress={handleMaintainerDemoFill}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.demoCardTitle, { color: colors.primary[900] }]}>
-                👷 Maintainer Operations Demo (Suresh Kulkarni)
-              </Text>
-              <Text style={styles.demoCardSubtitle}>Tap to auto-fill municipal maintainer credentials</Text>
-            </TouchableOpacity>
           </View>
 
 
