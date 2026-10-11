@@ -6,6 +6,7 @@ interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   setAuth: (token: string, user: User) => void;
+  setUser: (user: User) => void;
   logout: () => void;
 }
 
@@ -30,7 +31,7 @@ function getStoredAuth(): { token: string | null; user: User | null } {
 
 const initialAuth = getStoredAuth();
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   token: initialAuth.token,
   user: initialAuth.user,
   isAuthenticated: Boolean(initialAuth.token),
@@ -43,6 +44,17 @@ export const useAuthStore = create<AuthState>((set) => ({
       // ignore
     }
     set({ token, user, isAuthenticated: true });
+  },
+  setUser: (user: User) => {
+    const currentToken = get().token;
+    try {
+      if (typeof window !== 'undefined' && window.localStorage && currentToken) {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ token: currentToken, user }));
+      }
+    } catch {
+      // ignore
+    }
+    set({ user });
   },
   logout: () => {
     try {
