@@ -2,11 +2,12 @@ import { Ionicons } from '@expo/vector-icons';
 import type { Reward, RewardClaim } from '@ecopulse/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -18,7 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { theme } from '../../constants/theme';
 import { api } from '../../lib/api';
 
-const CATEGORIES: { label: string; value: string; icon: string }[] = [
+const CATEGORIES = [
   { label: 'All Vouchers', value: 'ALL', icon: 'grid-outline' },
   { label: 'Bus (PMPML)', value: 'TRANSIT_PASS', icon: 'bus-outline' },
   { label: 'Pune Metro', value: 'METRO_DISCOUNT', icon: 'train-outline' },
@@ -36,28 +37,45 @@ export default function RewardsScreen() {
   const [claimSuccessClaim, setClaimSuccessClaim] = useState<RewardClaim | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
-  // 1. Fetch Points Balance
+  // 1. Fetch Points Balance with instant cache fallback from home-dashboard
+  const homeDashboard = queryClient.getQueryData<any>(['home-dashboard']);
+  const cachedBalance =
+    homeDashboard?.points?.totalPoints ?? homeDashboard?.user?.points ?? 0;
+
   const { data: pointsData, refetch: refetchPoints } = useQuery({
     queryKey: ['me-points'],
     queryFn: () => api.me.getPoints(),
+    staleTime: 60 * 1000,
   });
-  const balance = pointsData?.balance.totalPoints ?? 0;
+  const balance = pointsData?.balance?.totalPoints ?? cachedBalance;
 
-  // 2. Fetch Available Rewards
+  // 2. Fetch All Available Rewards once & cache for 5 min (Fast 0ms in-memory filtering)
   const {
-    data: rewards = [],
+    data: allRewards = [],
     isLoading: isRewardsLoading,
     refetch: refetchRewards,
     isRefetching,
   } = useQuery({
-    queryKey: ['rewards', selectedCategory],
-    queryFn: () => api.rewards.getAll(selectedCategory === 'ALL' ? undefined : selectedCategory),
+    queryKey: ['rewards-all'],
+    queryFn: () => api.rewards.getAll(),
+    staleTime: 5 * 60 * 1000,
   });
 
+  // Instant category filtering in memory without network spinner
+  const rewards = useMemo(() => {
+    if (selectedCategory === 'ALL') return allRewards;
+    return allRewards.filter((r) => r.category === selectedCategory);
+  }, [allRewards, selectedCategory]);
+
   // 3. Fetch My Claimed Tickets
-  const { data: myClaims = [], refetch: refetchClaims } = useQuery({
+  const {
+    data: myClaims = [],
+    isLoading: isClaimsLoading,
+    refetch: refetchClaims,
+  } = useQuery({
     queryKey: ['my-reward-claims'],
     queryFn: () => api.rewards.getMyClaims(),
+    staleTime: 2 * 60 * 1000,
   });
 
   // 4. Claim Mutation
@@ -69,7 +87,7 @@ export default function RewardsScreen() {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['me-points'] });
       queryClient.invalidateQueries({ queryKey: ['home-dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['rewards'] });
+      queryClient.invalidateQueries({ queryKey: ['rewards-all'] });
       queryClient.invalidateQueries({ queryKey: ['my-reward-claims'] });
       setSelectedReward(null);
       setClaimSuccessClaim(result.claim);
@@ -88,6 +106,21 @@ export default function RewardsScreen() {
     setTimeout(() => setCopiedCode(null), 2500);
   };
 
+  const getCategoryTheme = (cat: string) => {
+    switch (cat) {
+      case 'TRANSIT_PASS':
+        return { tagBg: '#EFF6FF', tagText: '#1D4ED8', border: '#BFDBFE', label: 'PMPML City Bus' };
+      case 'METRO_DISCOUNT':
+        return { tagBg: '#FAF5FF', tagText: '#7E22CE', border: '#E9D5FF', label: 'Pune Metro' };
+      case 'PARKS_AND_RECREATION':
+        return { tagBg: '#F0FDF4', tagText: '#15803D', border: '#BBF7D0', label: 'Katraj Zoo / Park' };
+      case 'MUNICIPAL_TICKET':
+        return { tagBg: '#FFFBEB', tagText: '#B45309', border: '#FDE68A', label: 'PMC Heritage Pass' };
+      default:
+        return { tagBg: '#F8FAFC', tagText: '#475569', border: '#E2E8F0', label: 'Civic Voucher' };
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Top Header */}
@@ -98,12 +131,12 @@ export default function RewardsScreen() {
             onPress={() => router.back()}
             activeOpacity={0.7}
           >
-            <Ionicons name="arrow-back" size={22} color={theme.colors.forest} />
+            <Ionicons name="arrow-back" size={20} color={theme.colors.forest} />
           </TouchableOpacity>
 
           <View style={styles.headerTitleWrap}>
             <Text style={styles.headerTitle}>Redeem EcoPoints</Text>
-            <Text style={styles.headerSubtitle}>Government Tickets & Transit Vouchers</Text>
+            <Text style={styles.headerSubtitle}>Civic Transit & Entry Vouchers</Text>
           </View>
 
           <View style={{ width: 38 }} />
@@ -114,7 +147,7 @@ export default function RewardsScreen() {
           <View style={styles.balanceHeader}>
             <View style={styles.balanceTitleRow}>
               <Ionicons name="star" size={16} color="#F59E0B" style={{ marginRight: 6 }} />
-              <Text style={styles.balanceLabel}>Your Available Points</Text>
+              <Text style={styles.balanceLabel}>Your Balance</Text>
             </View>
             <View style={styles.liveIndicator}>
               <View style={styles.liveDot} />
@@ -146,7 +179,7 @@ export default function RewardsScreen() {
               style={{ marginRight: 6 }}
             />
             <Text style={[styles.tabButtonText, activeTab === 'EXPLORE' && styles.tabButtonTextActive]}>
-              Explore Coupons
+              Explore Coupons ({allRewards.length})
             </Text>
           </TouchableOpacity>
 
@@ -162,7 +195,7 @@ export default function RewardsScreen() {
               style={{ marginRight: 6 }}
             />
             <Text style={[styles.tabButtonText, activeTab === 'MY_TICKETS' && styles.tabButtonTextActive]}>
-              My Claimed Tickets ({myClaims.length})
+              My Tickets ({myClaims.length})
             </Text>
           </TouchableOpacity>
         </View>
@@ -183,7 +216,7 @@ export default function RewardsScreen() {
       >
         {activeTab === 'EXPLORE' ? (
           <>
-            {/* Category Filter Pills */}
+            {/* Horizontal Category Filter Pills */}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -213,7 +246,7 @@ export default function RewardsScreen() {
             </ScrollView>
 
             {/* Rewards Cards List */}
-            {isRewardsLoading ? (
+            {isRewardsLoading && allRewards.length === 0 ? (
               <View style={styles.loadingBox}>
                 <ActivityIndicator size="large" color={theme.colors.primary} />
                 <Text style={styles.loadingText}>Loading available vouchers...</Text>
@@ -231,13 +264,14 @@ export default function RewardsScreen() {
                 {rewards.map((reward) => {
                   const canAfford = balance >= reward.costPoints;
                   const pointsNeeded = reward.costPoints - balance;
+                  const catTheme = getCategoryTheme(reward.category);
 
                   return (
                     <View key={reward.id} style={styles.rewardCard}>
                       <View style={styles.rewardTopRow}>
-                        <View style={styles.partnerTag}>
-                          <Text style={styles.partnerTagText}>
-                            {reward.partnerName || 'Government of Maharashtra'}
+                        <View style={[styles.partnerTag, { backgroundColor: catTheme.tagBg, borderColor: catTheme.border }]}>
+                          <Text style={[styles.partnerTagText, { color: catTheme.tagText }]}>
+                            {reward.partnerName || catTheme.label}
                           </Text>
                         </View>
                         <View style={styles.costBadge}>
@@ -247,12 +281,14 @@ export default function RewardsScreen() {
                       </View>
 
                       <Text style={styles.rewardTitle}>{reward.title}</Text>
-                      <Text style={styles.rewardDesc}>{reward.description}</Text>
+                      <Text style={styles.rewardDesc} numberOfLines={2}>
+                        {reward.description}
+                      </Text>
 
                       <View style={styles.rewardDivider} />
 
                       <View style={styles.rewardBottomRow}>
-                        <View>
+                        <View style={styles.discountCol}>
                           <Text style={styles.discountValueText}>
                             {reward.discountPercent
                               ? `${reward.discountPercent}% OFF`
@@ -260,7 +296,7 @@ export default function RewardsScreen() {
                               ? `₹${reward.discountAmountInr} OFF`
                               : 'Special Pass'}
                           </Text>
-                          <Text style={styles.termsText}>
+                          <Text style={styles.termsText} numberOfLines={1}>
                             {reward.terms || 'Instant activation'}
                           </Text>
                         </View>
@@ -293,7 +329,12 @@ export default function RewardsScreen() {
         ) : (
           /* My Claimed Tickets Tab */
           <View style={styles.claimsList}>
-            {myClaims.length === 0 ? (
+            {isClaimsLoading && myClaims.length === 0 ? (
+              <View style={styles.loadingBox}>
+                <ActivityIndicator size="large" color={theme.colors.primary} />
+                <Text style={styles.loadingText}>Fetching your vouchers...</Text>
+              </View>
+            ) : myClaims.length === 0 ? (
               <View style={styles.emptyBox}>
                 <Ionicons name="wallet-outline" size={44} color={theme.colors.textTertiary} />
                 <Text style={styles.emptyTitle}>No Claimed Tickets Yet</Text>
@@ -337,7 +378,7 @@ export default function RewardsScreen() {
 
                     {/* Voucher Code Box */}
                     <View style={styles.voucherBox}>
-                      <View>
+                      <View style={{ flex: 1 }}>
                         <Text style={styles.voucherLabel}>VOUCHER CODE</Text>
                         <Text style={styles.voucherCodeText}>{claim.couponCode}</Text>
                       </View>
@@ -488,12 +529,12 @@ export default function RewardsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background, // #F4F8F5
+    backgroundColor: theme.colors.background,
   },
   header: {
     paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 14,
+    paddingTop: 8,
+    paddingBottom: 12,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
@@ -502,12 +543,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   backBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#F0FDF4',
     alignItems: 'center',
     justifyContent: 'center',
@@ -517,12 +558,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '800',
     color: theme.colors.forest,
   },
   headerSubtitle: {
-    fontSize: 12,
+    fontSize: 11,
     color: theme.colors.textSecondary,
     fontWeight: '600',
     marginTop: 1,
@@ -531,25 +572,25 @@ const styles = StyleSheet.create({
   // Balance Hero Card
   balanceCard: {
     backgroundColor: '#F0FDF4',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 14,
+    padding: 14,
     borderWidth: 1.5,
     borderColor: '#C6E7D2',
-    marginBottom: 14,
+    marginBottom: 12,
     ...theme.shadows.card,
   },
   balanceHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   balanceTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   balanceLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: theme.colors.forest,
   },
@@ -557,9 +598,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#DCFCE7',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
   },
   liveDot: {
     width: 6,
@@ -576,30 +617,30 @@ const styles = StyleSheet.create({
   balanceValueRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   balanceValue: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: '800',
     color: theme.colors.forest,
     marginRight: 6,
   },
   balanceUnit: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     color: theme.colors.primary,
   },
   balanceNote: {
     fontSize: 11,
     color: theme.colors.textSecondary,
-    lineHeight: 16,
+    lineHeight: 15,
   },
 
   // Tabs
   tabSelector: {
     flexDirection: 'row',
     backgroundColor: '#F1F5F9',
-    borderRadius: 12,
+    borderRadius: 10,
     padding: 3,
   },
   tabButton: {
@@ -607,14 +648,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 9,
-    borderRadius: 9,
+    paddingVertical: 8,
+    borderRadius: 8,
   },
   tabButtonActive: {
     backgroundColor: theme.colors.forest,
   },
   tabButtonText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: theme.colors.textSecondary,
   },
@@ -634,15 +675,15 @@ const styles = StyleSheet.create({
   // Categories
   categoriesRow: {
     gap: 8,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   catChip: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: theme.colors.border,
     ...theme.shadows.card,
@@ -662,58 +703,58 @@ const styles = StyleSheet.create({
 
   // Loading & Empty
   loadingBox: {
-    paddingVertical: 40,
+    paddingVertical: 36,
     alignItems: 'center',
   },
   loadingText: {
-    marginTop: 12,
-    fontSize: 14,
+    marginTop: 10,
+    fontSize: 13,
     color: theme.colors.textSecondary,
     fontWeight: '600',
   },
   emptyBox: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 24,
+    borderRadius: 14,
+    padding: 22,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: theme.colors.border,
-    marginTop: 10,
+    marginTop: 6,
   },
   emptyTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
     color: theme.colors.forest,
-    marginTop: 10,
+    marginTop: 8,
   },
   emptySub: {
     fontSize: 12,
     color: theme.colors.textSecondary,
     textAlign: 'center',
     marginTop: 4,
-    lineHeight: 18,
+    lineHeight: 17,
   },
   exploreCtaBtn: {
     backgroundColor: theme.colors.forest,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 10,
-    marginTop: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 9,
+    marginTop: 12,
   },
   exploreCtaBtnText: {
     color: '#FFFFFF',
     fontWeight: '700',
-    fontSize: 13,
+    fontSize: 12,
   },
 
   // Rewards List
   rewardsList: {
-    gap: 14,
+    gap: 12,
   },
   rewardCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 14,
+    padding: 14,
     borderWidth: 1,
     borderColor: theme.colors.border,
     ...theme.shadows.card,
@@ -725,35 +766,32 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   partnerTag: {
-    backgroundColor: '#F8FAFC',
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 3,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
   },
   partnerTagText: {
     fontSize: 10,
     fontWeight: '700',
-    color: theme.colors.textSecondary,
   },
   costBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FEF3C7',
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingVertical: 3,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#FDE68A',
   },
   costBadgeText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
     color: '#D97706',
   },
   rewardTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
     color: theme.colors.forest,
     marginBottom: 4,
@@ -761,20 +799,24 @@ const styles = StyleSheet.create({
   rewardDesc: {
     fontSize: 12,
     color: theme.colors.textSecondary,
-    lineHeight: 18,
+    lineHeight: 17,
   },
   rewardDivider: {
     height: 1,
     backgroundColor: '#F1F5F9',
-    marginVertical: 12,
+    marginVertical: 10,
   },
   rewardBottomRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  discountCol: {
+    flex: 1,
+    marginRight: 10,
+  },
   discountValueText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
     color: theme.colors.primary,
   },
@@ -785,15 +827,18 @@ const styles = StyleSheet.create({
   },
   redeemBtn: {
     backgroundColor: theme.colors.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 120,
   },
   redeemBtnDisabled: {
     backgroundColor: '#E2E8F0',
   },
   redeemBtnText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
     color: '#FFFFFF',
   },
@@ -801,22 +846,22 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
   },
 
-  // My Claims / Tickets
+  // My Claims List
   claimsList: {
-    gap: 14,
+    gap: 12,
   },
   ticketCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 14,
+    padding: 14,
     borderWidth: 1,
     borderColor: theme.colors.border,
     ...theme.shadows.card,
   },
   ticketHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 6,
   },
   ticketPartnerRow: {
@@ -824,31 +869,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   ticketPartnerText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
-    color: theme.colors.primary,
-    marginLeft: 4,
+    color: theme.colors.forest,
+    marginLeft: 6,
   },
   activePill: {
     backgroundColor: '#DCFCE7',
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: 6,
+    borderRadius: 8,
   },
   activePillText: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '800',
-    color: theme.colors.forest,
+    color: theme.colors.primary,
   },
   ticketTitle: {
     fontSize: 15,
     fontWeight: '800',
     color: theme.colors.forest,
+    marginBottom: 2,
   },
   ticketDate: {
     fontSize: 11,
     color: theme.colors.textTertiary,
-    marginTop: 2,
     marginBottom: 10,
   },
   voucherBox: {
@@ -857,40 +902,41 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     backgroundColor: '#F8FAFC',
     borderRadius: 10,
-    padding: 12,
-    borderWidth: 1,
+    padding: 10,
+    borderWidth: 1.5,
     borderColor: '#E2E8F0',
     borderStyle: 'dashed',
     marginBottom: 8,
   },
   voucherLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: theme.colors.textTertiary,
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#94A3B8',
+    letterSpacing: 0.5,
   },
   voucherCodeText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
     color: theme.colors.forest,
-    letterSpacing: 1.5,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     marginTop: 2,
   },
   copyBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 12,
+    backgroundColor: '#F0FDF4',
+    paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: 6,
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: '#BBF7D0',
   },
   copyBtnSuccess: {
     backgroundColor: theme.colors.primary,
     borderColor: theme.colors.primary,
   },
   copyBtnText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     color: theme.colors.forest,
   },
@@ -900,36 +946,37 @@ const styles = StyleSheet.create({
   ticketInstructions: {
     fontSize: 11,
     color: theme.colors.textSecondary,
-    lineHeight: 16,
+    lineHeight: 15,
   },
 
-  // Modal
+  // Modal Styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: 20,
   },
   modalContent: {
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
-    padding: 20,
+    padding: 22,
     width: '100%',
     maxWidth: 340,
     alignItems: 'center',
+    ...theme.shadows.card,
   },
   modalIconWrap: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: '#F0FDF4',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '800',
     color: theme.colors.forest,
     textAlign: 'center',
@@ -939,36 +986,38 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
     textAlign: 'center',
     marginTop: 4,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   modalDetailsBox: {
     width: '100%',
     backgroundColor: '#F8FAFC',
     borderRadius: 12,
     padding: 12,
-    marginBottom: 18,
-    gap: 8,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   modalDetailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    paddingVertical: 4,
   },
   modalDetailLabel: {
     fontSize: 12,
     color: theme.colors.textSecondary,
   },
   modalDetailCost: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
     color: '#DC2626',
   },
   modalDetailVal: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: theme.colors.forest,
   },
   modalDetailRemaining: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
     color: theme.colors.primary,
   },
@@ -979,61 +1028,59 @@ const styles = StyleSheet.create({
   },
   modalCancelBtn: {
     flex: 1,
-    height: 44,
+    backgroundColor: '#F1F5F9',
+    paddingVertical: 11,
     borderRadius: 10,
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F1F5F9',
   },
   modalCancelBtnText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     color: theme.colors.textSecondary,
   },
   modalConfirmBtn: {
     flex: 1.4,
-    height: 44,
+    backgroundColor: theme.colors.primary,
+    paddingVertical: 11,
     borderRadius: 10,
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: theme.colors.primary,
   },
   modalConfirmBtnText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '800',
     color: '#FFFFFF',
   },
 
-  // Voucher Box Modal
+  // Success Modal
   voucherBoxModal: {
-    alignItems: 'center',
+    width: '100%',
     backgroundColor: '#F8FAFC',
     borderRadius: 12,
-    padding: 16,
-    width: '100%',
-    marginBottom: 18,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: '#C6E7D2',
     borderStyle: 'dashed',
+    alignItems: 'center',
+    marginVertical: 12,
   },
   voucherCodeModal: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
     color: theme.colors.forest,
-    letterSpacing: 2,
-    marginBottom: 12,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    marginBottom: 10,
   },
   doneBtn: {
-    backgroundColor: theme.colors.forest,
     width: '100%',
-    height: 46,
-    borderRadius: 12,
+    backgroundColor: theme.colors.forest,
+    paddingVertical: 12,
+    borderRadius: 10,
     alignItems: 'center',
-    justifyContent: 'center',
+    marginTop: 4,
   },
   doneBtnText: {
-    fontSize: 14,
-    fontWeight: '800',
     color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 13,
   },
 });

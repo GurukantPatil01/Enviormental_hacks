@@ -6,6 +6,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
   Image,
   Platform,
   ScrollView,
@@ -16,106 +17,36 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { WebView } from 'react-native-webview';
 import { theme } from '../../constants/theme';
 import { api } from '../../lib/api';
 
-// Conditional import for map components
-let NativeMapView: any;
-let NativePolygon: any;
-let NativeCircle: any;
-let NativeMarker: any;
-let PROVIDER_DEFAULT: any;
-
-if (Platform.OS === 'web') {
-  NativeMapView = (props: any) => {
-    const mapHtml = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-        <style>
-          html, body, #map { margin: 0; padding: 0; width: 100%; height: 100%; background: #F4F8F5; }
-          .leaflet-popup-content-wrapper { border-radius: 12px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
-        </style>
-      </head>
-      <body>
-        <div id="map"></div>
-        <script>
-          var map = L.map('map', { zoomControl: false }).setView([18.5204, 73.8567], 13);
-          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '© OpenStreetMap'
-          }).addTo(map);
-
-          // Hotspots
-          var hotspots = [
-            { lat: 18.528, lng: 73.850, r: 600 },
-            { lat: 18.515, lng: 73.865, r: 500 },
-            { lat: 18.508, lng: 73.840, r: 700 },
-            { lat: 18.530, lng: 73.870, r: 550 }
-          ];
-          hotspots.forEach(function(h) {
-            L.circle([h.lat, h.lng], {
-              color: '#EF4444',
-              fillColor: '#EF4444',
-              fillOpacity: 0.15,
-              radius: h.r
-            }).addTo(map);
-            L.circleMarker([h.lat, h.lng], {
-              radius: 9,
-              fillColor: '#EF4444',
-              color: '#ffffff',
-              weight: 2,
-              fillOpacity: 1
-            }).addTo(map).bindPopup('🔥 <b>Waste Hotspot</b><br>High incident frequency');
-          });
-        </script>
-      </body>
-      </html>
-    `;
-    return (
-      <View style={[props.style, { overflow: 'hidden' }]}>
+const RNCWebView =
+  Platform.OS === 'web'
+    ? ({ source, style }: any) => (
         <iframe
-          srcDoc={mapHtml}
-          style={{ border: 'none', width: '100%', height: '100%' }}
+          srcDoc={source?.html}
+          style={{ border: 'none', width: '100%', height: '100%', ...(style || {}) }}
         />
-      </View>
-    );
-  };
-  NativePolygon = () => null;
-  NativeCircle = () => null;
-  NativeMarker = () => null;
-  PROVIDER_DEFAULT = undefined;
-} else {
-  const MapView = require('react-native-maps').default;
-  const { Polygon, Circle, Marker, PROVIDER_DEFAULT: prov } = require('react-native-maps');
-  NativeMapView = MapView as unknown as React.ComponentType<any>;
-  NativePolygon = Polygon as unknown as React.ComponentType<any>;
-  NativeCircle = Circle as unknown as React.ComponentType<any>;
-  NativeMarker = Marker as unknown as React.ComponentType<any>;
-  PROVIDER_DEFAULT = prov;
-}
+      )
+    : (WebView as any);
 
 const DEFAULT_CENTER = {
-  latitude: 18.5204,
-  longitude: 73.8567,
-  latitudeDelta: 0.08,
-  longitudeDelta: 0.08,
+  lat: 18.5204,
+  lng: 73.8567,
 };
 
 export default function MapScreen() {
   const router = useRouter();
-  const mapRef = useRef<any>(null);
+  const webViewRef = useRef<WebView>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showReports, setShowReports] = useState(true);
   const [showHotspots, setShowHotspots] = useState(true);
   const [isLocating, setIsLocating] = useState(false);
+  const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
 
-  // Queries
+  // 1. Fetch Cluster & Map Overview
   const {
     data: mapData,
     isLoading: isMapLoading,
@@ -123,8 +54,10 @@ export default function MapScreen() {
   } = useQuery({
     queryKey: ['map-overview'],
     queryFn: () => api.geo.mapOverview(),
+    staleTime: 60 * 1000,
   });
 
+  // 2. Fetch Active Reports List
   const {
     data: reportsData,
     isLoading: isReportsLoading,
@@ -132,53 +65,321 @@ export default function MapScreen() {
   } = useQuery({
     queryKey: ['map-reports'],
     queryFn: () => api.reports.list(),
+    staleTime: 60 * 1000,
   });
 
   const clusters = mapData?.clusters ?? [];
   const reportsList = reportsData ?? [];
 
-  // Filter nearby reports based on search
+  // Filter nearby reports based on search query
   const nearbyReports = useMemo(() => {
-    if (!searchQuery.trim()) return reportsList.slice(0, 10);
+    if (!searchQuery.trim()) return reportsList.slice(0, 15);
     const q = searchQuery.toLowerCase();
     return reportsList.filter(
       (r) =>
         r.title?.toLowerCase().includes(q) ||
-        r.locationAddress?.toLowerCase().includes(q)
+        r.locationAddress?.toLowerCase().includes(q) ||
+        r.category?.toLowerCase().includes(q)
     );
   }, [reportsList, searchQuery]);
 
-  // Center on user location
+  // Generate self-contained Leaflet HTML (works 100% on iOS, Android, Expo Go, Web)
+  const leafletHtml = useMemo(() => {
+    const clusterFeatures = clusters.map((c) => ({
+      id: c.id,
+      name: c.name,
+      code: c.code,
+      lat: c.center.lat,
+      lng: c.center.lng,
+      openReports: c.openReportsCount ?? 0,
+      boundary: c.boundaryGeoJson,
+    }));
+
+    const reportFeatures = reportsList
+      .map((r) => {
+        const coords = (r.locationGeoJson as any)?.coordinates;
+        if (!coords || typeof coords[0] !== 'number' || typeof coords[1] !== 'number') return null;
+        return {
+          id: r.id,
+          title: r.title || 'Waste report',
+          category: r.category || 'WASTE_HOTSPOT',
+          status: r.status,
+          lat: coords[1],
+          lng: coords[0],
+          address: r.locationAddress || 'Civic location',
+        };
+      })
+      .filter(Boolean);
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    html, body, #map {
+      height: 100%;
+      width: 100%;
+      margin: 0;
+      padding: 0;
+      background: #F4F8F5;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .leaflet-popup-content-wrapper {
+      border-radius: 14px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+      padding: 2px;
+    }
+    .leaflet-popup-content {
+      margin: 10px 14px;
+      line-height: 1.4;
+      font-size: 13px;
+    }
+    .popup-title {
+      font-weight: 800;
+      color: #0E3B2E;
+      font-size: 14px;
+      margin-bottom: 2px;
+    }
+    .popup-sub {
+      color: #64748B;
+      font-size: 11px;
+      margin-bottom: 6px;
+    }
+    .popup-tag {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 6px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      background: #FAF5FF;
+      color: #7E22CE;
+      border: 1px solid #E9D5FF;
+    }
+    .hotspot-pin {
+      background: #EF4444;
+      border: 2.5px solid #FFFFFF;
+      border-radius: 50%;
+      width: 22px;
+      height: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(239, 68, 68, 0.45);
+      font-size: 11px;
+      color: white;
+    }
+    .report-pin {
+      background: #7E22CE;
+      border: 2.5px solid #FFFFFF;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(126, 34, 206, 0.4);
+      font-size: 10px;
+      color: white;
+    }
+    .user-pulse {
+      background: #0284C7;
+      border: 3px solid #FFFFFF;
+      border-radius: 50%;
+      width: 16px;
+      height: 16px;
+      box-shadow: 0 0 0 4px rgba(2, 132, 199, 0.35);
+    }
+    .leaflet-control-attribution {
+      font-size: 8px !important;
+      background: rgba(255, 255, 255, 0.6) !important;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    var map = L.map('map', {
+      zoomControl: false,
+      attributionControl: true
+    }).setView([${DEFAULT_CENTER.lat}, ${DEFAULT_CENTER.lng}], 13);
+
+    // Reliable OpenStreetMap standard tiles (Zero API keys required)
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    var clustersGroup = L.layerGroup().addTo(map);
+    var reportsGroup = L.layerGroup().addTo(map);
+    var userGroup = L.layerGroup().addTo(map);
+
+    var clustersData = ${JSON.stringify(clusterFeatures)};
+    var reportsData = ${JSON.stringify(reportFeatures)};
+
+    // 1. Render Cluster Hotspots
+    function renderClusters() {
+      clustersGroup.clearLayers();
+      clustersData.forEach(function(c) {
+        // Red radar coverage circle
+        L.circle([c.lat, c.lng], {
+          radius: 550,
+          color: '#EF4444',
+          weight: 1.5,
+          fillColor: '#EF4444',
+          fillOpacity: 0.16
+        }).addTo(clustersGroup);
+
+        // Flame pin icon
+        var icon = L.divIcon({
+          className: 'custom-icon',
+          html: '<div class="hotspot-pin">🔥</div>',
+          iconSize: [22, 22],
+          iconAnchor: [11, 11]
+        });
+
+        var marker = L.marker([c.lat, c.lng], { icon: icon }).addTo(clustersGroup);
+        marker.bindPopup(
+          '<div class="popup-title">🔥 ' + c.name + '</div>' +
+          '<div class="popup-sub">Ward Code: ' + c.code + '</div>' +
+          '<span class="popup-tag" style="background:#FEF2F2;color:#DC2626;border-color:#FCA5A5;">' + c.openReports + ' Active Alerts</span>'
+        );
+      });
+    }
+
+    // 2. Render Incident Reports
+    function renderReports() {
+      reportsGroup.clearLayers();
+      reportsData.forEach(function(r) {
+        var icon = L.divIcon({
+          className: 'custom-icon',
+          html: '<div class="report-pin">📍</div>',
+          iconSize: [20, 20],
+          iconAnchor: [10, 10]
+        });
+
+        var marker = L.marker([r.lat, r.lng], { icon: icon }).addTo(reportsGroup);
+        marker.bindPopup(
+          '<div class="popup-title">' + r.title + '</div>' +
+          '<div class="popup-sub">' + r.address + '</div>' +
+          '<span class="popup-tag">' + r.status.replace(/_/g, ' ') + '</span>'
+        );
+
+        marker.on('click', function() {
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'REPORT_CLICKED',
+              id: r.id
+            }));
+          }
+        });
+      });
+    }
+
+    renderClusters();
+    renderReports();
+
+    // Layer Visibility Controllers
+    window.toggleHotspots = function(visible) {
+      if (visible) { map.addLayer(clustersGroup); } else { map.removeLayer(clustersGroup); }
+    };
+
+    window.toggleReports = function(visible) {
+      if (visible) { map.addLayer(reportsGroup); } else { map.removeLayer(reportsGroup); }
+    };
+
+    // Navigation and Camera API
+    window.flyToLocation = function(lat, lng, zoom) {
+      map.flyTo([lat, lng], zoom || 16, { duration: 1.2 });
+    };
+
+    window.setUserLocation = function(lat, lng) {
+      userGroup.clearLayers();
+      var icon = L.divIcon({
+        className: 'user-icon',
+        html: '<div class="user-pulse"></div>',
+        iconSize: [16, 16],
+        iconAnchor: [8, 8]
+      });
+      L.marker([lat, lng], { icon: icon }).addTo(userGroup);
+    };
+
+    window.zoomIn = function() { map.zoomIn(); };
+    window.zoomOut = function() { map.zoomOut(); };
+    window.resetMapView = function() {
+      map.flyTo([${DEFAULT_CENTER.lat}, ${DEFAULT_CENTER.lng}], 13, { duration: 1 });
+    };
+  </script>
+</body>
+</html>`;
+  }, [clusters, reportsList]);
+
+  // Center on user location via device GPS
   const handleMyLocation = async () => {
     setIsLocating(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Location permission is required to center on your position.');
+        Alert.alert('Location Permission Required', 'Please enable location services to center on your position.');
         setIsLocating(false);
         return;
       }
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      if (mapRef.current && mapRef.current.animateToRegion) {
-        mapRef.current.animateToRegion(
-          {
-            latitude: loc.coords.latitude,
-            longitude: loc.coords.longitude,
-            latitudeDelta: 0.02,
-            longitudeDelta: 0.02,
-          },
-          1000
-        );
-      }
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      webViewRef.current?.injectJavaScript(`
+        if (window.setUserLocation) { window.setUserLocation(${loc.coords.latitude}, ${loc.coords.longitude}); }
+        if (window.flyToLocation) { window.flyToLocation(${loc.coords.latitude}, ${loc.coords.longitude}, 16); }
+        true;
+      `);
     } catch (err: any) {
-      Alert.alert('Location Error', err.message || 'Could not acquire position');
+      Alert.alert('Location Error', err.message || 'Could not acquire device position');
     } finally {
       setIsLocating(false);
     }
   };
 
-  const handleZoom = (inOrOut: 'IN' | 'OUT') => {
-    // Zoom helper for native maps if available
+  const handleZoom = (direction: 'IN' | 'OUT') => {
+    if (direction === 'IN') {
+      webViewRef.current?.injectJavaScript(`if (window.zoomIn) { window.zoomIn(); } true;`);
+    } else {
+      webViewRef.current?.injectJavaScript(`if (window.zoomOut) { window.zoomOut(); } true;`);
+    }
+  };
+
+  const handleToggleReports = () => {
+    const next = !showReports;
+    setShowReports(next);
+    webViewRef.current?.injectJavaScript(`if (window.toggleReports) { window.toggleReports(${next}); } true;`);
+  };
+
+  const handleToggleHotspots = () => {
+    const next = !showHotspots;
+    setShowHotspots(next);
+    webViewRef.current?.injectJavaScript(`if (window.toggleHotspots) { window.toggleHotspots(${next}); } true;`);
+  };
+
+  const handleCardPress = (report: any) => {
+    const coords = (report.locationGeoJson as any)?.coordinates;
+    if (coords && coords[1] && coords[0]) {
+      setSelectedReportId(report.id);
+      webViewRef.current?.injectJavaScript(`
+        if (window.flyToLocation) { window.flyToLocation(${coords[1]}, ${coords[0]}, 17); }
+        true;
+      `);
+    }
+  };
+
+  const handleMessage = (event: any) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === 'REPORT_CLICKED') {
+        setSelectedReportId(data.id);
+      }
+    } catch {
+      // Ignore non-json bridge messages
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -191,7 +392,7 @@ export default function MapScreen() {
       case 'RESOLVED':
         return { bg: theme.colors.status.resolvedBg, text: theme.colors.status.resolvedText, label: 'Resolved' };
       case 'IN_PROGRESS':
-        return { bg: theme.colors.status.processingBg, text: theme.colors.status.processingText, label: 'Processing' };
+        return { bg: theme.colors.status.processingBg, text: theme.colors.status.processingText, label: 'In Progress' };
       default:
         return { bg: theme.colors.status.pendingBg, text: theme.colors.status.pendingText, label: 'Submitted' };
     }
@@ -199,57 +400,58 @@ export default function MapScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Search Bar & Filter Header (Screenshot 1) */}
+      {/* Top Search & Filter Bar */}
       <View style={styles.topHeader}>
         <View style={styles.searchBar}>
           <Ionicons name="search" size={20} color={theme.colors.textSecondary} style={{ marginRight: 8 }} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search location or area..."
+            placeholder="Search Pune area, street, or hotspot..."
             placeholderTextColor={theme.colors.textMuted}
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
-          <TouchableOpacity
-            style={styles.filterBtn}
-            onPress={() => {
-              Alert.alert('Map Filters', 'Toggle between all reports and municipal hotspot zones.');
-            }}
-          >
-            <Ionicons name="options-outline" size={20} color={theme.colors.forest} />
-          </TouchableOpacity>
+          {searchQuery ? (
+            <TouchableOpacity onPress={() => setSearchQuery('')} style={{ padding: 4 }}>
+              <Ionicons name="close-circle" size={18} color={theme.colors.textMuted} />
+            </TouchableOpacity>
+          ) : null}
         </View>
 
-        {/* Quick Filter Chips (Screenshot 1) */}
+        {/* Quick Filter Chips */}
         <View style={styles.chipsRow}>
           {/* Reports Chip */}
           <TouchableOpacity
             style={[styles.chip, showReports && styles.chipActivePurple]}
-            onPress={() => setShowReports(!showReports)}
+            onPress={handleToggleReports}
             activeOpacity={0.8}
           >
             <Ionicons
               name="location"
               size={15}
               color={showReports ? '#7E22CE' : theme.colors.textSecondary}
-              style={{ marginRight: 4 }}
+              style={{ marginRight: 5 }}
             />
-            <Text style={[styles.chipText, showReports && styles.chipTextPurple]}>Reports</Text>
+            <Text style={[styles.chipText, showReports && styles.chipTextPurple]}>
+              Reports ({reportsList.length})
+            </Text>
           </TouchableOpacity>
 
           {/* Hotspots Chip */}
           <TouchableOpacity
             style={[styles.chip, showHotspots && styles.chipActiveRed]}
-            onPress={() => setShowHotspots(!showHotspots)}
+            onPress={handleToggleHotspots}
             activeOpacity={0.8}
           >
             <Ionicons
               name="flame"
               size={15}
               color={showHotspots ? '#DC2626' : theme.colors.textSecondary}
-              style={{ marginRight: 4 }}
+              style={{ marginRight: 5 }}
             />
-            <Text style={[styles.chipText, showHotspots && styles.chipTextRed]}>Hotspots</Text>
+            <Text style={[styles.chipText, showHotspots && styles.chipTextRed]}>
+              Hotspots ({clusters.length})
+            </Text>
           </TouchableOpacity>
 
           {/* My Location Chip */}
@@ -259,79 +461,35 @@ export default function MapScreen() {
             activeOpacity={0.8}
           >
             {isLocating ? (
-              <ActivityIndicator size="small" color={theme.colors.primary} style={{ marginRight: 4 }} />
+              <ActivityIndicator size="small" color="#0284C7" style={{ marginRight: 5 }} />
             ) : (
-              <Ionicons name="navigate-circle-outline" size={16} color="#0284C7" style={{ marginRight: 4 }} />
+              <Ionicons name="navigate-circle" size={16} color="#0284C7" style={{ marginRight: 5 }} />
             )}
             <Text style={[styles.chipText, { color: '#0284C7' }]}>My Location</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Map Surface */}
+      {/* Map Surface (Leaflet OpenStreetMap in WebView) */}
       <View style={styles.mapWrap}>
-        <NativeMapView
-          ref={mapRef}
+        <RNCWebView
+          ref={webViewRef}
           style={StyleSheet.absoluteFill}
-          initialRegion={DEFAULT_CENTER}
-          provider={PROVIDER_DEFAULT}
-          showsUserLocation
-          showsMyLocationButton={false}
-          toolbarEnabled={false}
-        >
-          {/* Hotspot Circles & Markers */}
-          {showHotspots &&
-            clusters.map((cluster) => {
-              return (
-                <React.Fragment key={cluster.id}>
-                  {NativeCircle && (
-                    <NativeCircle
-                      center={{ latitude: cluster.center.lat, longitude: cluster.center.lng }}
-                      radius={600}
-                      fillColor="rgba(239, 68, 68, 0.18)"
-                      strokeColor="rgba(239, 68, 68, 0.4)"
-                      strokeWidth={1.5}
-                    />
-                  )}
-                  {NativeMarker && (
-                    <NativeMarker
-                      coordinate={{ latitude: cluster.center.lat, longitude: cluster.center.lng }}
-                      title={cluster.name}
-                      description={`Open incidents: ${cluster.openReportsCount ?? 0}`}
-                    >
-                      <View style={styles.hotspotPin}>
-                        <Ionicons name="flame" size={14} color="#FFFFFF" />
-                      </View>
-                    </NativeMarker>
-                  )}
-                </React.Fragment>
-              );
-            })}
+          source={{ html: leafletHtml }}
+          originWhitelist={['*']}
+          onMessage={handleMessage}
+          javaScriptEnabled
+          domStorageEnabled
+          startInLoadingState
+          renderLoading={() => (
+            <View style={styles.mapLoadingOverlay}>
+              <ActivityIndicator size="large" color={theme.colors.primary} />
+              <Text style={styles.mapLoadingText}>Loading live municipal map...</Text>
+            </View>
+          )}
+        />
 
-          {/* Report Markers */}
-          {showReports &&
-            reportsList.map((rep) => {
-              const coords = (rep.locationGeoJson as any)?.coordinates;
-              if (!coords || !coords[0] || !coords[1]) return null;
-              return (
-                NativeMarker && (
-                  <NativeMarker
-                    key={rep.id}
-                    coordinate={{ latitude: coords[1], longitude: coords[0] }}
-                    title={rep.title || 'Waste report'}
-                    description={rep.status}
-                    onCalloutPress={() => router.push(`/(resident)/report/${rep.id}` as any)}
-                  >
-                    <View style={styles.reportPin}>
-                      <Ionicons name="location" size={16} color="#7E22CE" />
-                    </View>
-                  </NativeMarker>
-                )
-              );
-            })}
-        </NativeMapView>
-
-        {/* Map Floating Controls (Screenshot 1: right side) */}
+        {/* Map Floating Zoom & Reset Controls */}
         <View style={styles.floatingControls}>
           <TouchableOpacity
             style={styles.controlBtn}
@@ -358,7 +516,7 @@ export default function MapScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Bottom Sheet for Nearby Reports (Screenshot 1) */}
+        {/* Bottom Sheet for Nearby Reports */}
         <View style={styles.bottomSheet}>
           <View style={styles.sheetHandleWrap}>
             <View style={styles.sheetHandle} />
@@ -366,8 +524,8 @@ export default function MapScreen() {
 
           <View style={styles.sheetHeader}>
             <View style={styles.sheetHeaderLeft}>
-              <Ionicons name="navigate-circle" size={22} color={theme.colors.primary} />
-              <Text style={styles.sheetHeaderTitle}>Nearby Reports</Text>
+              <Ionicons name="navigate-circle" size={20} color={theme.colors.primary} />
+              <Text style={styles.sheetHeaderTitle}>Nearby Incidents & Alerts</Text>
             </View>
             <TouchableOpacity
               onPress={() => {
@@ -388,18 +546,19 @@ export default function MapScreen() {
           >
             {nearbyReports.length === 0 ? (
               <View style={styles.emptyNearbyBox}>
-                <Text style={styles.emptyNearbyText}>No nearby environmental reports recorded</Text>
+                <Text style={styles.emptyNearbyText}>No nearby environmental incidents reported</Text>
               </View>
             ) : (
               nearbyReports.map((report) => {
                 const badge = getStatusBadge(report.status);
                 const thumb = report.evidence?.[0]?.mediaUrl;
+                const isSelected = selectedReportId === report.id;
 
                 return (
                   <TouchableOpacity
                     key={report.id}
-                    style={styles.nearbyCard}
-                    onPress={() => router.push(`/(resident)/report/${report.id}` as any)}
+                    style={[styles.nearbyCard, isSelected && styles.nearbyCardSelected]}
+                    onPress={() => handleCardPress(report)}
                     activeOpacity={0.85}
                   >
                     <View style={styles.nearbyThumbWrap}>
@@ -407,7 +566,7 @@ export default function MapScreen() {
                         <Image source={{ uri: thumb }} style={styles.nearbyThumb} />
                       ) : (
                         <View style={styles.nearbyThumbFallback}>
-                          <Ionicons name="trash-outline" size={20} color={theme.colors.primary} />
+                          <Ionicons name="trash-outline" size={18} color={theme.colors.primary} />
                         </View>
                       )}
                     </View>
@@ -417,12 +576,20 @@ export default function MapScreen() {
                         {report.title || 'Waste report'}
                       </Text>
                       <Text style={styles.nearbyAddress} numberOfLines={1}>
-                        {report.locationAddress || 'Pimpri Colony, Pune'}
+                        {report.locationAddress || 'Pune Municipal Ward'}
                       </Text>
-                      <View style={[styles.nearbyBadge, { backgroundColor: badge.bg }]}>
-                        <Text style={[styles.nearbyBadgeText, { color: badge.text }]}>
-                          {badge.label}
-                        </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 3 }}>
+                        <View style={[styles.nearbyBadge, { backgroundColor: badge.bg }]}>
+                          <Text style={[styles.nearbyBadgeText, { color: badge.text }]}>
+                            {badge.label}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          onPress={() => router.push(`/(resident)/report/${report.id}` as any)}
+                          style={styles.viewLink}
+                        >
+                          <Text style={styles.viewLinkText}>Details ›</Text>
+                        </TouchableOpacity>
                       </View>
                     </View>
                   </TouchableOpacity>
@@ -443,8 +610,8 @@ const styles = StyleSheet.create({
   },
   topHeader: {
     paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 12,
+    paddingTop: 8,
+    paddingBottom: 10,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
@@ -454,32 +621,29 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F8FAFC',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    height: 48,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 44,
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
   searchInput: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 13,
     color: theme.colors.textPrimary,
-  },
-  filterBtn: {
-    padding: 6,
   },
   chipsRow: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 10,
+    marginTop: 8,
   },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
     paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 20,
+    paddingVertical: 6,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: theme.colors.border,
     ...theme.shadows.card,
@@ -493,7 +657,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FEF2F2',
   },
   chipText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     color: theme.colors.textSecondary,
   },
@@ -507,45 +671,40 @@ const styles = StyleSheet.create({
     flex: 1,
     position: 'relative',
   },
+  mapLoadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  mapLoadingText: {
+    marginTop: 10,
+    fontSize: 13,
+    color: theme.colors.forest,
+    fontWeight: '600',
+  },
   floatingControls: {
     position: 'absolute',
-    top: 16,
-    right: 16,
+    top: 14,
+    right: 14,
     gap: 8,
     zIndex: 5,
   },
   controlBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: theme.colors.border,
     ...theme.shadows.card,
-  },
-  hotspotPin: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#EF4444',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    elevation: 4,
-  },
-  reportPin: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#FAF5FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#C084FC',
-    elevation: 3,
   },
 
   // Bottom Sheet
@@ -555,21 +714,21 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 24,
+    paddingTop: 6,
+    paddingBottom: 22,
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
     ...theme.shadows.card,
   },
   sheetHandleWrap: {
     alignItems: 'center',
-    paddingVertical: 6,
+    paddingVertical: 5,
   },
   sheetHandle: {
-    width: 36,
+    width: 34,
     height: 4,
     borderRadius: 2,
     backgroundColor: '#CBD5E1',
@@ -578,30 +737,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   sheetHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   sheetHeaderTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
     color: theme.colors.forest,
-    marginLeft: 8,
+    marginLeft: 6,
   },
   sheetScrollContent: {
-    gap: 12,
-    paddingVertical: 4,
+    gap: 10,
+    paddingVertical: 2,
   },
   emptyNearbyBox: {
-    paddingVertical: 18,
+    paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    width: 300,
+    width: 280,
   },
   emptyNearbyText: {
-    fontSize: 13,
+    fontSize: 12,
     color: theme.colors.textMuted,
   },
   nearbyCard: {
@@ -612,12 +771,16 @@ const styles = StyleSheet.create({
     padding: 10,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    width: 250,
+    width: 260,
     ...theme.shadows.card,
   },
+  nearbyCardSelected: {
+    borderColor: theme.colors.primary,
+    backgroundColor: '#F0FDF4',
+  },
   nearbyThumbWrap: {
-    width: 50,
-    height: 50,
+    width: 48,
+    height: 48,
     borderRadius: 10,
     overflow: 'hidden',
     marginRight: 10,
@@ -644,17 +807,25 @@ const styles = StyleSheet.create({
   nearbyAddress: {
     fontSize: 11,
     color: theme.colors.textSecondary,
-    marginVertical: 2,
+    marginVertical: 1,
   },
   nearbyBadge: {
     alignSelf: 'flex-start',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,
-    marginTop: 2,
   },
   nearbyBadgeText: {
     fontSize: 10,
     fontWeight: '700',
+  },
+  viewLink: {
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
+  viewLinkText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: theme.colors.primary,
   },
 });
