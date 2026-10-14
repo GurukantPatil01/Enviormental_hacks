@@ -5,6 +5,8 @@
 
 EcoPulse is a production-grade environmental community platform featuring a native mobile application (iOS & Android) and a modular monolith backend designed to empower citizens to participate in verified ecological missions, earn auditable EcoPoints on an immutable ledger, build daily civic habits, and accumulate measurable community progress.
 
+📖 **Comprehensive Documentation:** For the complete breakdown of every built component, integration flows, scalability strategy, and future roadmaps, see the [Complete System Architecture & Scaling Guide](ECOPULSE_SYSTEM_COMPLETE_GUIDE.md).
+
 ---
 
 ## 🏗 Monorepo Architecture
