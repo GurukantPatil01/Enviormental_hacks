@@ -4,6 +4,7 @@
   "private": true,
   "description": "EcoPulse — Environmental Community Accountability and Incentivization Platform",
   "scripts": {
+    "start": "./run.sh",
     "dev": "turbo run dev",
     "build": "turbo run build",
     "test": "turbo run test",

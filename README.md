@@ -57,17 +57,35 @@ pnpm db:seed
 ```
 
 ### 5. Running the Stack
-To start both the API server (port 4000) and Mobile app in development mode:
+
+You can run the entire application with a single command:
 ```bash
-pnpm dev
+./run.sh
+# or
+pnpm start
 ```
 
-Or run individual apps:
+Available run modes:
+```bash
+./run.sh          # Default: Runs API + Web Dashboard
+./run.sh all      # Runs API + Web Dashboard
+./run.sh full     # Runs API + Web Dashboard + Mobile (Expo)
+./run.sh web      # Runs API + Web Dashboard
+./run.sh mobile   # Runs API + Mobile (Expo Metro)
+./run.sh api      # Runs Backend API only
+./run.sh status   # Inspect ports & service health
+./run.sh stop     # Gracefully stop running EcoPulse services
+```
+
+Or run individual apps directly via pnpm:
 ```bash
 # Start backend API (http://localhost:4000)
 pnpm --filter @ecopulse/api dev
 
-# Start native Expo mobile app
+# Start web dashboard (http://localhost:3000)
+pnpm --filter @ecopulse/web dev
+
+# Start native Expo mobile app (http://localhost:8081)
 pnpm --filter @ecopulse/mobile start
 ```
 
