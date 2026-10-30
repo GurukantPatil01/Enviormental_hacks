@@ -16,6 +16,9 @@
 
 set -e
 
+# Ensure standard system and package manager binary paths are included
+export PATH="/usr/local/bin:/opt/homebrew/bin:/Users/gurukantpatil/Library/pnpm:/Users/gurukantpatil/.nvm/versions/node/v22.20.0/bin:$PATH"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
@@ -200,7 +203,7 @@ case "$MODE" in
     echo -e "  ./run.sh stop     - Stop all services on ports 4000, 3000, 8081"
     exit 0
     ;;
-  all|web|"")
+  all|web|w|"")
     check_prerequisites
     check_database
     echo -e "${BOLD}${CYAN}======================================================${NC}"
@@ -231,7 +234,7 @@ case "$MODE" in
     run_api
     wait
     ;;
-  mobile)
+  mobile|mobil|m)
     check_prerequisites
     check_database
     echo -e "${BOLD}${CYAN}======================================================${NC}"
@@ -246,7 +249,7 @@ case "$MODE" in
     run_mobile
     wait
     ;;
-  full)
+  full|f)
     check_prerequisites
     check_database
     echo -e "${BOLD}${CYAN}======================================================${NC}"
